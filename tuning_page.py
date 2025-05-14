@@ -1,20 +1,18 @@
-import sys
+# tuning_page.py
+
 from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog,
-    QComboBox, QTableWidget, QTableWidgetItem, QHBoxLayout, QFormLayout, QGroupBox, QSizePolicy
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog,
+    QGroupBox, QComboBox, QFormLayout, QTableWidget, QTableWidgetItem, QSizePolicy
 )
-from PySide6.QtGui import QColor, QFont, QPalette, QIcon
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtGui import QColor, QFont
+from PySide6.QtCore import Qt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from logAnalyser import get_file, detect_heater_zones, consol_controller, extract_all_zones_all_series_limited
 
-
-class TunaAnalyzer(QWidget):
+class TuningPage(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("TunaGUI")
-        self.setGeometry(100, 100, 1000, 900)
         self.data_rows = []
         self.zone_data = {}
         self.selected_temp_mode = "normal"
@@ -24,56 +22,37 @@ class TunaAnalyzer(QWidget):
     def init_ui(self):
         layout = QVBoxLayout(self)
 
-        # CSV 업로드 필드 (아이콘 제외, 라벨만 테두리 감싸기)
+        # === 파일 업로드 ===
         file_layout = QHBoxLayout()
-
-        self.upload_btn = QPushButton()
-        self.upload_btn.setIcon(QIcon("disk_icon_purple.png"))
-        self.upload_btn.setIconSize(QSize(36, 36))
+        self.upload_btn = QPushButton("📁")
         self.upload_btn.setFixedSize(40, 40)
+        self.upload_btn.setStyleSheet("background-color: #5e35b1; color: white; font-size: 20px")
         self.upload_btn.clicked.connect(self.load_csv)
-
-        file_label_group = QGroupBox()
-        file_label_group.setStyleSheet("""
-            QGroupBox {
-                border: 2px solid #5e35b1;
-                border-radius: 8px;
-                margin-top: 4px;
-                padding: 8px;
-            }
-        """)
-        file_label_layout = QVBoxLayout()
 
         self.file_label = QLabel("선택된 파일 없음")
         self.file_label.setStyleSheet("color: red; font-style: italic; font-weight: bold;")
-        file_label_layout.addWidget(self.file_label)
-        file_label_group.setLayout(file_label_layout)
 
-        # 설정 필드와 동일한 폭으로 맞추기
-        file_label_group.setMinimumWidth(400)
-        file_label_group.setSizePolicy(file_label_group.sizePolicy().horizontalPolicy(), file_label_group.sizePolicy().verticalPolicy())
+        file_group = QGroupBox()
+        file_group.setStyleSheet("border: 2px solid #5e35b1; border-radius: 8px; padding: 6px;")
+        file_group_layout = QVBoxLayout()
+        file_group_layout.addWidget(self.file_label)
+        file_group.setLayout(file_group_layout)
+        file_group.setMinimumWidth(400)
 
         file_layout.addWidget(self.upload_btn)
-        file_layout.addWidget(file_label_group)
+        file_layout.addWidget(file_group)
 
-        # 설정 필드 (톱니바퀴 + 드롭다운 + 테두리 + 분석 버튼)
-        settings_container = QHBoxLayout()
+        # === 설정 필드 ===
+        settings_layout = QHBoxLayout()
+        gear_label = QLabel("⚙️")
+        gear_label.setFixedSize(40, 40)
+        gear_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        gear_label.setStyleSheet("background-color: #5e35b1; color: white; font-size: 20px")
+        settings_layout.addWidget(gear_label)
 
-        gear_icon_label = QLabel()
-        gear_icon_label.setPixmap(QIcon("gear_icon_purple.png").pixmap(36, 36))
-        gear_icon_label.setFixedSize(40, 40)
-        settings_container.addWidget(gear_icon_label)
-
-        settings_group = QGroupBox()
-        settings_group.setStyleSheet("""
-            QGroupBox {
-                border: 2px solid #5e35b1;
-                border-radius: 8px;
-                margin-top: 4px;
-                padding: 8px;
-            }
-        """)
-        settings_layout = QFormLayout()
+        config_group = QGroupBox()
+        config_group.setStyleSheet("border: 2px solid #5e35b1; border-radius: 8px; padding: 6px;")
+        form_layout = QFormLayout()
 
         self.temp_mode_combo = QComboBox()
         self.temp_mode_combo.addItems(["normal", "high"])
@@ -83,19 +62,19 @@ class TunaAnalyzer(QWidget):
         self.etype_combo.addItems(["BCl3", "Annealing", "POCl3", "Oxidation"])
         self.etype_combo.currentTextChanged.connect(lambda text: setattr(self, "selected_etype", text))
 
-        settings_layout.addRow("Temp Control Mode 선택", self.temp_mode_combo)
-        settings_layout.addRow("설비군 선택", self.etype_combo)
-        settings_group.setLayout(settings_layout)
+        form_layout.addRow("Temp Control Mode 선택", self.temp_mode_combo)
+        form_layout.addRow("설비군 선택", self.etype_combo)
+        config_group.setLayout(form_layout)
 
-        settings_container.addWidget(settings_group)
+        settings_layout.addWidget(config_group)
 
-        # 분석 버튼을 설정 필드 오른쪽에 맞춤 높이로 배치
         self.analyze_btn = QPushButton("분석 실행")
-        self.analyze_btn.setStyleSheet("background-color: #; color: white; border-radius: 4px; min-width: 300px;")
+        self.analyze_btn.setStyleSheet("background-color: #5e35b1; color: white;")
         self.analyze_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         self.analyze_btn.clicked.connect(self.run_analysis)
-        settings_container.addWidget(self.analyze_btn)
+        settings_layout.addWidget(self.analyze_btn)
 
+        # === 결과 / 테이블 / 그래프 ===
         self.result_label = QLabel("")
         self.result_label.setStyleSheet("color: green; font-style: italic; border: 2px solid #5e35b1; border-radius: 8px; padding: 4px;")
 
@@ -107,9 +86,8 @@ class TunaAnalyzer(QWidget):
         self.canvas = FigureCanvas(self.figure)
         self.canvas.setStyleSheet("background-color: #2b2b2b;")
 
-        # 전체 레이아웃 정리
         layout.addLayout(file_layout)
-        layout.addLayout(settings_container)
+        layout.addLayout(settings_layout)
         layout.addWidget(self.result_label)
         layout.addWidget(self.table)
         layout.addWidget(self.canvas)
@@ -127,7 +105,7 @@ class TunaAnalyzer(QWidget):
             return
 
         zone_count = detect_heater_zones(self.data_rows[0])
-        headers = ["구분"] + [f"Zone{i+1}" for i in range(zone_count)] + ["비고"]
+        headers = ["구분"] + [f"Zone{i + 1}" for i in range(zone_count)] + ["비고"]
 
         p1, initial_p2, p2, recipe_step = consol_controller(
             self.selected_temp_mode, self.selected_etype, self.data_rows)
@@ -191,33 +169,3 @@ class TunaAnalyzer(QWidget):
         ax.grid(True, color="gray")
         ax.legend()
         self.canvas.draw()
-
-
-def set_dark_palette(app):
-    dark_palette = QPalette()
-    dark_palette.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
-    dark_palette.setColor(QPalette.ColorRole.WindowText, Qt.white)
-    dark_palette.setColor(QPalette.ColorRole.Base, QColor(35, 35, 35))
-    dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
-    dark_palette.setColor(QPalette.ColorRole.ToolTipBase, Qt.white)
-    dark_palette.setColor(QPalette.ColorRole.ToolTipText, Qt.white)
-    dark_palette.setColor(QPalette.ColorRole.Text, Qt.white)
-    dark_palette.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
-    dark_palette.setColor(QPalette.ColorRole.ButtonText, Qt.white)
-    dark_palette.setColor(QPalette.ColorRole.BrightText, Qt.red)
-    dark_palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
-    dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
-    dark_palette.setColor(QPalette.ColorRole.HighlightedText, Qt.black)
-    app.setPalette(dark_palette)
-
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-    set_dark_palette(app)
-    window = TunaAnalyzer()
-    window.show()
-    try:
-        sys.exit(app.exec())
-    except SystemExit:
-        print("종료 완료")
