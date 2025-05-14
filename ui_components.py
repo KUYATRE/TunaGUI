@@ -1,4 +1,4 @@
-# utils.py
+# ui_components.py
 
 from PySide6.QtGui import QPalette, QColor
 from PySide6.QtCore import Qt

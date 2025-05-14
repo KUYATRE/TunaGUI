@@ -1,4 +1,4 @@
-# settings_page.py
+# ui_settings.py
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
 

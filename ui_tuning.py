@@ -1,4 +1,4 @@
-# tuning_page.py
+# ui_tuning.py
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog,
@@ -8,7 +8,7 @@ from PySide6.QtGui import QColor, QFont
 from PySide6.QtCore import Qt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from logAnalyser import get_file, detect_heater_zones, consol_controller, extract_all_zones_all_series_limited
+from algo_logAnalyser import get_file, detect_heater_zones, consol_controller, extract_all_zones_all_series_limited
 
 class TuningPage(QWidget):
     def __init__(self):
@@ -98,6 +98,7 @@ class TuningPage(QWidget):
             self.data_rows = get_file(file_path)
             self.file_label.setText(file_path)
             self.file_label.setStyleSheet("color: #00cc00; font-style: italic; font-weight: bold;")
+        return file_path
 
     def run_analysis(self):
         if not self.data_rows:

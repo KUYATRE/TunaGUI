@@ -1,11 +1,11 @@
 # TunaGUI Main Entry (통합된 GUI를 메뉴바 구조로 관리)
-# 페이지별 GUI 클래스는 tuning_page.py, settings_page.py 로 분리됨
+# 페이지별 GUI 클래스는 ui_tuning.py, ui_settings.py 로 분리됨
 
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QStackedWidget, QWidget
 
 # 외부 페이지 클래스 import
-from tuning_page import TuningPage
-from settings_page import SettingsPage
+from ui_tuning import TuningPage
+from ui_settings import SettingsPage
 
 class TunaAnalyzer(QWidget):
     def __init__(self):
