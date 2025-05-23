@@ -8,7 +8,7 @@ from ui_components import set_dark_palette
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    set_dark_palette(app)
+    # set_dark_palette(app)
 
     window = TunaAnalyzer()
     window.show()

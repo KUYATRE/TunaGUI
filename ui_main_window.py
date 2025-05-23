@@ -20,7 +20,7 @@ class TunaAnalyzer(QWidget):
         # === 사이드바 ===
         self.sidebar = QFrame()
         self.sidebar.setFixedWidth(200)
-        self.sidebar.setStyleSheet("background-color: #3a3a3a; border-right: 2px solid #5e35b1;")
+        # self.sidebar.setStyleSheet("background-color: #3a3a3a; border-right: 2px solid #5e35b1;")
 
         sidebar_layout = QVBoxLayout()
         sidebar_layout.setContentsMargins(10, 10, 10, 10)
@@ -34,7 +34,7 @@ class TunaAnalyzer(QWidget):
 
         # 햄버거 토글 버튼
         self.toggle_btn = QPushButton("≡")
-        self.toggle_btn.setFixedWidth(30)
+        self.toggle_btn.setFixedSize(40, 40)
         self.toggle_btn.setStyleSheet("background-color: #5e35b1; color: white; font-size: 20px")
         self.toggle_btn.clicked.connect(self.toggle_sidebar)
 
