@@ -33,7 +33,7 @@ class TuningPage(QWidget):
         self.file_label.setStyleSheet("color: red; font-style: italic; font-weight: bold;")
 
         file_group = QGroupBox()
-        # file_group.setStyleSheet("border: 2px solid #5e35b1; border-radius: 8px; padding: 6px;")
+        file_group.setStyleSheet("background-color: lightgray")
         file_group_layout = QVBoxLayout()
         file_group_layout.addWidget(self.file_label)
         file_group.setLayout(file_group_layout)
@@ -51,7 +51,7 @@ class TuningPage(QWidget):
         settings_layout.addWidget(gear_label)
 
         config_group = QGroupBox()
-        # config_group.setStyleSheet("border: 2px solid #5e35b1; border-radius: 8px; padding: 6px;")
+        config_group.setStyleSheet("background-color: lightgray")
         form_layout = QFormLayout()
 
         self.temp_mode_combo = QComboBox()
@@ -76,7 +76,7 @@ class TuningPage(QWidget):
 
         # === 결과 / 테이블 / 그래프 ===
         self.result_label = QLabel("")
-        self.result_label.setStyleSheet("color: green; font-style: italic; border: 2px solid #5e35b1; border-radius: 8px; padding: 4px;")
+        self.result_label.setStyleSheet("background-color: lightgray; color: green; font-style: italic; border: 2px solid #5e35b1; border-radius: 8px; padding: 4px;")
 
         self.table = QTableWidget()
         self.table.setStyleSheet("font-family: 'Segoe UI'; font-size: 13px;")

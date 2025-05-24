@@ -1,11 +1,11 @@
 # TunaGUI Main Entry (통합된 GUI를 메뉴바 구조로 관리)
-# 페이지별 GUI 클래스는 ui_tuning.py, ui_settings.py 로 분리됨
+# 페이지별 GUI 클래스는 ui_tuning.py, ui_dashboard.py 로 분리됨
 
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QStackedWidget, QWidget
 
 # 외부 페이지 클래스 import
 from ui_tuning import TuningPage
-from ui_settings import SettingsPage
+from ui_dashboard import SettingsPage
 
 class TunaAnalyzer(QWidget):
     def __init__(self):
@@ -20,17 +20,19 @@ class TunaAnalyzer(QWidget):
         # === 사이드바 ===
         self.sidebar = QFrame()
         self.sidebar.setFixedWidth(200)
-        # self.sidebar.setStyleSheet("background-color: #3a3a3a; border-right: 2px solid #5e35b1;")
+        self.sidebar.setStyleSheet("background-color: lightgray; border-right: 2px solid #5e35b1;")
 
         sidebar_layout = QVBoxLayout()
         sidebar_layout.setContentsMargins(10, 10, 10, 10)
 
-        menu_btn1 = QPushButton("Tuning")
-        menu_btn2 = QPushButton("Settings")
-        sidebar_layout.addWidget(menu_btn1)
-        sidebar_layout.addWidget(menu_btn2)
+        menu_tuning = QPushButton("Tuning")
+        menu_dashboard = QPushButton("Dashboard")
+        sidebar_layout.addWidget(menu_dashboard)
+        sidebar_layout.addWidget(menu_tuning)
         sidebar_layout.addStretch()
         self.sidebar.setLayout(sidebar_layout)
+
+        self.sidebar.setVisible(False)
 
         # 햄버거 토글 버튼
         self.toggle_btn = QPushButton("≡")
@@ -47,8 +49,8 @@ class TunaAnalyzer(QWidget):
         self.stacked_widget.addWidget(self.page_settings)   # index 1
 
         # 페이지 전환 이벤트 연결
-        menu_btn1.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(0))
-        menu_btn2.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(1))
+        menu_tuning.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(0))
+        menu_dashboard.clicked.connect(lambda: self.stacked_widget.setCurrentIndex(1))
 
         # 사이드바 + 페이지 결합
         left_layout = QVBoxLayout()
