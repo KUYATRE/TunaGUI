@@ -2,8 +2,8 @@
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QGroupBox, QFrame
 from PySide6.QtCore import Qt, QTimer, QThreadPool
-from omronfins.finsudp import FinsUDP
-from algo_fins_test import CheckConnectionWorker
+from algo_fins_comm import FinsUDPClient
+from algo_fins_checkconnection import CheckConnectionWorker
 
 class SettingsPage(QWidget):
     def __init__(self):
@@ -15,6 +15,10 @@ class SettingsPage(QWidget):
         self.timer.timeout.connect(self.check_connection)
         self.thread_pool = QThreadPool()
         self.init_ui()
+
+        self.heartbeat_area = 0xA0  # D 영역
+        self.heartbeat_word = 0
+        self.heartbeat_bit = 0
 
     def init_ui(self):
         self.settings_group = QGroupBox()
@@ -107,9 +111,14 @@ class SettingsPage(QWidget):
         self.connect_btn = QPushButton("연결")
         self.connect_btn.clicked.connect(self.try_connect)
 
+        self.disconnect_btn = QPushButton("해제")
+        self.disconnect_btn.clicked.connect(self.disconnect)
+        self.disconnect_btn.setEnabled(False)  # 처음엔 비활성화
+
         ip_layout.addWidget(QLabel("PLC IP : "))
         ip_layout.addWidget(self.ip_input)
         ip_layout.addWidget(self.connect_btn)
+        ip_layout.addWidget(self.disconnect_btn)
 
         self.status_label = QLabel("PLC 연결 안 됨")
         self.status_label.setStyleSheet("color: Red; font-weight: bold;")
@@ -139,26 +148,44 @@ class SettingsPage(QWidget):
             return
 
         try:
-            self.fins = FinsUDP(0, 11)
-            self.fins.open(ip, 9600)
-            self.fins.set_destination(dst_net_addr=0, dst_node_num=10, dst_unit_addr=0)
+            self.fins = FinsUDPClient(ip, plc_port=9600, plc_node=1, pc_node=179)
+
+            # 연결 테스트 (ex: CIO 0.00 읽기)
+            test_bit = self.fins.read_word_bit(mem_area=0xA0, word_addr=0, bit_offset=0)
+            if test_bit is None:
+                raise Exception("PLC 응답 없음")
+
+            # 초기 Heart Beat 출력 비트 ON
+            success = self.fins.write_word_bit(mem_area=0xA0, word_addr=16800, bit_offset=0, turn_on=True)
+            if not success:
+                raise Exception("초기 비트 쓰기 실패 (16800.0)")
+
             self.comm_alive = True
-            self.status_label.setText(f"Socket open 성공: {ip}")
+            self.status_label.setText(f"소켓 연결 성공: {ip}")
             self.status_label.setStyleSheet("color: Green; font-weight: bold;")
-            self.timer.start(1000)
+            self.timer.start(500)
+            self.disconnect_btn.setEnabled(True)
+            self.connect_btn.setEnabled(False)
 
         except Exception as e:
             self.comm_alive = False
-            self.status_label.setText(f"Socket open 실패: {e}")
+            self.status_label.setText(f"소켓 연결 실패: {e}")
             self.status_label.setStyleSheet("color: Red; font-weight: bold;")
 
     def check_connection(self):
         if not self.fins:
-            self.status_label.setText("FINS 연결 안 됨")
+            self.status_label.setText("FINS 클라이언트 없음")
             self.status_label.setStyleSheet("color: Red; font-weight: bold;")
             return
 
-        worker = CheckConnectionWorker(self.fins, self.prev_bit, self.handle_connection_result)
+        worker = CheckConnectionWorker(
+            fins_client=self.fins,
+            prev_bit=self.prev_bit,
+            callback=self.handle_connection_result,
+            mem_area=self.heartbeat_area,
+            word_addr=self.heartbeat_word,
+            bit_offset=self.heartbeat_bit
+        )
         self.thread_pool.start(worker)
 
     def handle_connection_result(self, bit_val, is_alive, error):
@@ -184,3 +211,23 @@ class SettingsPage(QWidget):
             self.comm_lamp_text_label.setText(f"통신 끊김 {self.ip_input.text().strip()}")
             self.comm_lamp_text_label.setStyleSheet("color: Red; font-weight: bold;")
 
+    def disconnect(self):
+        try:
+            if self.timer.isActive():
+                self.timer.stop()
+
+            if self.fins:
+                self.fins.close()  # FinsUDPClient의 close() 호출
+                self.fins = None
+
+            self.status_label.setText("연결 해제됨")
+            self.status_label.setStyleSheet("color: Red; font-weight: bold;")
+            self.comm_lamp_label.setStyleSheet("background-color: lightgray; border-radius: 10px;")
+            self.comm_lamp_text_label.setText("통신 안 됨")
+            self.comm_lamp_text_label.setStyleSheet("color: Red; font-weight: bold;")
+
+            self.disconnect_btn.setEnabled(False)
+            self.connect_btn.setEnabled(True)
+
+        except Exception as e:
+            self.status_label.setText(f"해제 중 오류: {e}")
