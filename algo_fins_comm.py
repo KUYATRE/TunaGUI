@@ -56,12 +56,23 @@ class FinsUDPClient:
         except socket.timeout:
             return None
 
-    def read_word(self, word_addr, mem_area):
-        cmd = self.build_read_command(mem_area, word_addr, 0, 1)
+    def read_word(self, word_addr, mem_area, word_count=1):
+        cmd = self.build_read_command(mem_area, word_addr, 0, word_count)
         response = self.send_command(cmd)
+
         if response is None or response[12:14] != b'\x00\x00':
             return None
-        return int.from_bytes(response[-2:], byteorder='big')
+
+        if word_count == 1:
+            return int.from_bytes(response[-2:], byteorder='big')
+        else:
+            data_start = 14
+            data_bytes = response[data_start:]
+            word_list = [
+                int.from_bytes(data_bytes[i:i + 2], byteorder='big')
+                for i in range(0, len(data_bytes), 2)
+            ]
+            return word_list
 
     def read_word_bit(self, mem_area, word_addr, bit_offset):
         cmd = self.build_read_command(mem_area, word_addr, bit_offset)
@@ -70,7 +81,7 @@ class FinsUDPClient:
             print("응답 없음 timeout")
             return None
         if response[12:14] != b'\x00\x00':
-            print("읽기 실패", response[12:].hex())
+            print("읽기 실패", response[12:14].hex())
             return None
 
         value = int.from_bytes(response[-2:], byteorder='big')
@@ -94,8 +105,8 @@ class FinsUDPClient:
         if response is None:
             print("응답 없음 timeout")
             return False
-        if response[12:] != b'\x00\x00':
-            print("쓰기 실패", response[12:].hex())
+        if response[12:14] != b'\x00\x00':
+            print("쓰기 실패", response[12:14].hex())
             return False
         print("Write", mem_area, word_addr, bit_offset, "=", turn_on)
         return True
@@ -119,7 +130,7 @@ class FinsUDPClient:
             print("응답 없음 (timeout)")
             return False
         if response[12:14] != b'\x00\x00':
-            print("비트 쓰기 실패", response[12:].hex())
+            print("비트 쓰기 실패", response[12:14].hex())
             return False
 
         print(f"Bit Write: {mem_area:#X}_{word_addr}.{bit_offset:02} = {'ON' if turn_on else 'OFF'}")

@@ -1,5 +1,3 @@
-# ui_dashboard.py
-
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QGroupBox, QFrame
 from PySide6.QtCore import Qt, QTimer, QThreadPool
 from algo_fins_comm import FinsUDPClient
@@ -14,16 +12,32 @@ class SettingsPage(QWidget):
         self.timer = QTimer()
         self.timer.timeout.connect(self.check_connection)
         self.thread_pool = QThreadPool()
-        self.init_ui()
 
-        self.heartbeat_area = 0xA0  # D 영역
+        self.heartbeat_area = 0xA0
         self.heartbeat_word = 0
         self.heartbeat_bit = 0
+        self.heartbeat_state = False
+        self.heartbeat_timer = QTimer()
+        self.heartbeat_timer.timeout.connect(self.toggle_heartbeat)
+        self.plc_hb_signal = False
+
+        self.init_ui()
+
+    @staticmethod
+    def get_default_config():
+        return {
+            'ip': '172.22.80.1',
+            'plc_port': 9600,
+            'plc_node': 1,
+            'pc_node': 179
+        }
+
+    def get_plc_ip(self) -> str:
+        return self.ip_input.text().strip()
 
     def init_ui(self):
         self.settings_group = QGroupBox()
         self.layout = QVBoxLayout(self)
-
         self.add_status_group()
         self.add_horizontal_separator()
         self.add_main_connection_area()
@@ -38,14 +52,14 @@ class SettingsPage(QWidget):
         row1 = QHBoxLayout()
         row1.addWidget(self.comm_lamp_label)
         row1.addWidget(self.comm_lamp_text_label)
-        row1.addWidget(self.test1_lamp_label)
-        row1.addWidget(self.test1_lamp_text_label)
+        row1.addWidget(self.hb_pc_lamp_label)
+        row1.addWidget(self.hb_pc_lamp_text_label)
 
         row2 = QHBoxLayout()
         row2.addWidget(self.test2_lamp_label)
         row2.addWidget(self.test2_lamp_text_label)
-        row2.addWidget(self.test3_lamp_label)
-        row2.addWidget(self.test3_lamp_text_label)
+        row2.addWidget(self.hb_plc_lamp_label)
+        row2.addWidget(self.hb_plc_lamp_text_label)
 
         status_layout = QVBoxLayout()
         status_layout.addLayout(row1)
@@ -59,27 +73,27 @@ class SettingsPage(QWidget):
         self.comm_lamp_label.setFixedSize(20, 20)
         self.comm_lamp_label.setStyleSheet("background-color: lightgray; border-radius: 10px;")
 
-        self.test1_lamp_label = QLabel()
-        self.test1_lamp_label.setFixedSize(20, 20)
-        self.test1_lamp_label.setStyleSheet("background-color: lightgray; border-radius: 10px;")
+        self.hb_pc_lamp_label = QLabel()
+        self.hb_pc_lamp_label.setFixedSize(20, 20)
+        self.hb_pc_lamp_label.setStyleSheet("background-color: lightgray; border-radius: 10px;")
 
         self.test2_lamp_label = QLabel()
         self.test2_lamp_label.setFixedSize(20, 20)
         self.test2_lamp_label.setStyleSheet("background-color: #A8E6CF; border-radius: 10px;")
 
-        self.test3_lamp_label = QLabel()
-        self.test3_lamp_label.setFixedSize(20, 20)
-        self.test3_lamp_label.setStyleSheet("background-color: #FF8A80; border-radius: 10px;")
+        self.hb_plc_lamp_label = QLabel()
+        self.hb_plc_lamp_label.setFixedSize(20, 20)
+        self.hb_plc_lamp_label.setStyleSheet("background-color: lightgray; border-radius: 10px;")
 
     def init_status_labels(self):
         self.comm_lamp_text_label = QLabel("통신 안 됨")
         self.comm_lamp_text_label.setStyleSheet("color: Red; font-weight: bold;")
 
-        self.test1_lamp_text_label = QLabel("TEST1")
+        self.hb_pc_lamp_text_label = QLabel("Heartbeat(PC)")
         self.test2_lamp_text_label = QLabel("TEST2")
-        self.test3_lamp_text_label = QLabel("TEST3")
+        self.hb_plc_lamp_text_label = QLabel("Heartbeat(PLC)")
 
-        for lbl in [self.test1_lamp_text_label, self.test2_lamp_text_label, self.test3_lamp_text_label]:
+        for lbl in [self.hb_pc_lamp_text_label, self.test2_lamp_text_label, self.hb_plc_lamp_text_label]:
             lbl.setStyleSheet("font-weight: bold;")
 
     def add_horizontal_separator(self):
@@ -90,7 +104,6 @@ class SettingsPage(QWidget):
 
     def add_main_connection_area(self):
         main_split_layout = QHBoxLayout()
-
         left = self.create_left_connection_layout()
         vline = self.create_vertical_separator()
         right = self.create_right_placeholder_layout()
@@ -113,7 +126,7 @@ class SettingsPage(QWidget):
 
         self.disconnect_btn = QPushButton("해제")
         self.disconnect_btn.clicked.connect(self.disconnect)
-        self.disconnect_btn.setEnabled(False)  # 처음엔 비활성화
+        self.disconnect_btn.setEnabled(False)
 
         ip_layout.addWidget(QLabel("PLC IP : "))
         ip_layout.addWidget(self.ip_input)
@@ -142,28 +155,30 @@ class SettingsPage(QWidget):
 
     def try_connect(self):
         ip = self.ip_input.text().strip()
-
         if not ip:
             self.status_label.setText("IP를 입력하세요.")
             return
 
         try:
-            self.fins = FinsUDPClient(ip, plc_port=9600, plc_node=1, pc_node=179)
-
-            # 연결 테스트 (ex: CIO 0.00 읽기)
+            self.plc_port = 9600
+            self.plc_node = 1
+            self.pc_node = 179
+            self.fins = FinsUDPClient(ip, plc_port=self.plc_port, plc_node=self.plc_node, pc_node=self.pc_node)
             test_bit = self.fins.read_word_bit(mem_area=0xA0, word_addr=0, bit_offset=0)
             if test_bit is None:
                 raise Exception("PLC 응답 없음")
 
-            # 초기 Heart Beat 출력 비트 ON
             success = self.fins.write_word_bit(mem_area=0xA0, word_addr=16800, bit_offset=0, turn_on=True)
             if not success:
-                raise Exception("초기 비트 쓰기 실패 (16800.0)")
+                raise Exception("초기 비트 쓰기 실패")
 
             self.comm_alive = True
             self.status_label.setText(f"소켓 연결 성공: {ip}")
             self.status_label.setStyleSheet("color: Green; font-weight: bold;")
+
             self.timer.start(500)
+            self.heartbeat_timer.start(500)
+
             self.disconnect_btn.setEnabled(True)
             self.connect_btn.setEnabled(False)
 
@@ -171,6 +186,17 @@ class SettingsPage(QWidget):
             self.comm_alive = False
             self.status_label.setText(f"소켓 연결 실패: {e}")
             self.status_label.setStyleSheet("color: Red; font-weight: bold;")
+
+    def toggle_heartbeat(self):
+        if self.fins:
+            success = False
+            try:
+                success = self.fins.write_word_bit(mem_area=0xA0, word_addr=16800, bit_offset=1, turn_on=self.heartbeat_state)
+            except Exception as e:
+                print("PC → PLC Heartbeat 쓰기 오류:", e)
+
+            self.update_pc_hb_lamp(self.heartbeat_state if success else False)
+            self.heartbeat_state = not self.heartbeat_state
 
     def check_connection(self):
         if not self.fins:
@@ -193,41 +219,60 @@ class SettingsPage(QWidget):
             self.status_label.setText(f"통신 실패 : {error}")
             self.status_label.setStyleSheet("color: Red; font-weight: bold;")
             self.comm_alive = False
-            self.update_lamp(False)
+            self.update_comm_lamp(False)
+            self.update_plc_hb_lamp(False)
         else:
             self.comm_alive = is_alive
             self.status_label.setText("통신 정상" if is_alive else "비트 변화 없음")
             self.status_label.setStyleSheet("color: Green; font-weight: bold;")
             self.prev_bit = bit_val
-            self.update_lamp(is_alive)
-
-    def update_lamp(self, is_alive):
-        if is_alive:
-            self.comm_lamp_label.setStyleSheet("background-color: #A8E6CF; border-radius: 10px;")
-            self.comm_lamp_text_label.setText(f"통신 정상 {self.ip_input.text().strip()}")
-            self.comm_lamp_text_label.setStyleSheet("color: Green; font-weight: bold;")
-        else:
-            self.comm_lamp_label.setStyleSheet("background-color: #FF8A80; border-radius: 10px;")
-            self.comm_lamp_text_label.setText(f"통신 끊김 {self.ip_input.text().strip()}")
-            self.comm_lamp_text_label.setStyleSheet("color: Red; font-weight: bold;")
+            self.update_comm_lamp(is_alive)
+            self.update_plc_hb_lamp(bit_val == 1)
 
     def disconnect(self):
         try:
-            if self.timer.isActive():
-                self.timer.stop()
+            self.fins.write_word_bit(mem_area=0xA0, word_addr=16800, bit_offset=0, turn_on=False)
+        except:
+            pass
 
-            if self.fins:
-                self.fins.close()  # FinsUDPClient의 close() 호출
-                self.fins = None
+        if self.timer.isActive():
+            self.timer.stop()
+        if self.heartbeat_timer.isActive():
+            self.heartbeat_timer.stop()
 
-            self.status_label.setText("연결 해제됨")
-            self.status_label.setStyleSheet("color: Red; font-weight: bold;")
-            self.comm_lamp_label.setStyleSheet("background-color: lightgray; border-radius: 10px;")
-            self.comm_lamp_text_label.setText("통신 안 됨")
-            self.comm_lamp_text_label.setStyleSheet("color: Red; font-weight: bold;")
+        if self.fins:
+            try:
+                self.fins.close()
+            except:
+                pass
+            self.fins = None
 
-            self.disconnect_btn.setEnabled(False)
-            self.connect_btn.setEnabled(True)
+        self.status_label.setText("연결 해제됨")
+        self.status_label.setStyleSheet("color: Red; font-weight: bold;")
+        self.comm_lamp_label.setStyleSheet("background-color: lightgray; border-radius: 10px;")
+        self.comm_lamp_text_label.setText("통신 안 됨")
+        self.comm_lamp_text_label.setStyleSheet("color: Red; font-weight: bold;")
+        self.disconnect_btn.setEnabled(False)
+        self.connect_btn.setEnabled(True)
+        self.update_pc_hb_lamp(False)
+        self.update_plc_hb_lamp(False)
 
-        except Exception as e:
-            self.status_label.setText(f"해제 중 오류: {e}")
+    def update_comm_lamp(self, is_alive):
+        color = "#A8E6CF" if is_alive else "#FF8A80"
+        text = "통신 정상" if is_alive else "통신 끊김"
+        font_color = "Green" if is_alive else "Red"
+        self.comm_lamp_label.setStyleSheet(f"background-color: {color}; border-radius: 10px;")
+        self.comm_lamp_text_label.setText(f"{text} {self.ip_input.text().strip()}")
+        self.comm_lamp_text_label.setStyleSheet(f"color: {font_color}; font-weight: bold;")
+
+    def update_pc_hb_lamp(self, is_alive):
+        color = "#A8E6CF" if is_alive else "lightgray"
+        self.hb_pc_lamp_label.setStyleSheet(f"background-color: {color}; border-radius: 10px;")
+        self.hb_pc_lamp_text_label.setText("Heartbeat(PC)")
+        self.hb_pc_lamp_text_label.setStyleSheet("color: black; font-weight: bold;")
+
+    def update_plc_hb_lamp(self, is_alive):
+        color = "#A8E6CF" if is_alive else "lightgray"
+        self.hb_plc_lamp_label.setStyleSheet(f"background-color: {color}; border-radius: 10px;")
+        self.hb_plc_lamp_text_label.setText("Heartbeat(PLC)")
+        self.hb_plc_lamp_text_label.setStyleSheet("color: black; font-weight: bold;")

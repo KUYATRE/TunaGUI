@@ -1,0 +1,238 @@
+from algo_fins_comm import FinsUDPClient
+from ui_dashboard import SettingsPage
+from datetime import datetime
+import os
+import glob
+import pandas as pd
+
+
+class DataProcessor:
+    def __init__(self, filepath: str):
+        self.filepath = filepath
+        self.dataframe = None
+        self.encoding = 'utf-8'
+
+        self.read_available_bit_area = 0xA0
+        self.read_available_word = 0
+        self.read_available_bit = 3
+
+        self.data_read_available = 0
+
+        self.tube_id = 0
+        self.job_id = 0
+        self.base_dir = 'C:/Users/202202773-NB/PycharmProjects/TunaGUI_QT/datasets'
+
+    def load_csv_to_dataframe(self):
+        try:
+            # job_id 기반으로 경로 내 CSV 파일 탐색
+            search_pattern = f"*_{self.job_id}_*.csv"
+            full_pattern = os.path.join(self.base_dir, search_pattern)
+            matched_files = glob.glob(full_pattern)
+
+            if not matched_files:
+                raise FileNotFoundError(f"{self.job_id}를 포함하는 CSV 파일을 찾을 수 없습니다.")
+
+            # 일치하는 파일 중 가장 최신 파일 선택
+            matched_file = max(matched_files, key=os.path.getmtime)
+            self.filepath = matched_file
+
+            # 파일 로드
+            self.dataframe = pd.read_csv(self.filepath, encoding=self.encoding)
+            self.dataframe.columns = [col.strip() for col in self.dataframe.columns]
+            print(f"파일 로드 성공: {self.filepath}")
+            return self.dataframe
+
+        except Exception as e:
+            print(f"파일 로드 실패: {e}")
+            return pd.DataFrame()
+
+    def strip_process_dataframe(self):
+        columns_to_keep = [
+            'Step Name', 'Tube ID', 'JobNo',
+            'ZONE1(SP)', 'ZONE2(SP)', 'ZONE3(SP)', 'ZONE4(SP)', 'ZONE5(SP)', 'ZONE6(SP)', 'ZONE7(SP)', 'ZONE8(SP)',
+            'ZONE1(Spike)', 'ZONE2(Spike)', 'ZONE3(Spike)', 'ZONE4(Spike)', 'ZONE5(Spike)', 'ZONE6(Spike)', 'ZONE7(Spike)', 'ZONE8(Spike)',
+            'ZONE1(Profile)', 'ZONE2(Profile)', 'ZONE3(Profile)', 'ZONE4(Profile)', 'ZONE5(Profile)', 'ZONE6(Profile)', 'ZONE7(Profile)', 'ZONE8(Profile)',
+        ]
+        self.dataframe = self.dataframe[columns_to_keep]
+        self.dataframe = self.dataframe[self.dataframe['Step Name']=='Drive in']
+
+        # Step Name, Tube ID, JobNo 제외한 숫자열만 평균 계산
+        numeric_cols = [col for col in self.dataframe.columns if col not in ['Step Name', 'Tube ID', 'JobNo']]
+        mean_series = self.dataframe[numeric_cols].mean(numeric_only=True)
+
+        # Step Name, Tube ID, JobNo 한 행에서 추출
+        step_name = self.dataframe.iloc[0]['Step Name'] if not self.dataframe.empty else ''
+        tube_id = self.dataframe.iloc[0]['Tube ID'] if not self.dataframe.empty else ''
+        job_id = self.dataframe.iloc[0]['JobNo'] if not self.dataframe.empty else ''
+
+        # 평균값 시리즈에 Step Name, Tube ID, JobNo 추가
+        mean_row = mean_series.to_dict()
+        mean_row['Step Name'] = step_name
+        mean_row['Tube ID'] = tube_id
+        mean_row['JobNo'] = job_id
+
+        # 열 순서를 맞추기 위해 다시 정렬
+        final_columns = ['Step Name', 'Tube ID', 'JobNo'] + numeric_cols
+        mean_df = pd.DataFrame([mean_row])[final_columns]
+
+        # CSV 파일 저장
+        output_path = self.generate_output_path(tube_id, job_id, base_dir=self.base_dir, process_data=1)
+        mean_df.to_csv(output_path, index=False, encoding='utf-8-sig')
+        print(f"CSV 저장 완료: {output_path}")
+
+        return mean_df
+
+    def strip_sheet_res_dataframe(self, tube_id, job_id, sheet_res_data):
+        # 데이터 유효성 체크
+        if sheet_res_data is None or len(sheet_res_data) != 72:
+            print("워드 개수가 72개가 아닙니다.")
+            return
+
+        # 72개 → 8개의 ZONE, 각 ZONE당 9개 워드로 분할
+        zone_matrix = [sheet_res_data[i:i + 9] for i in range(0, 72, 9)]
+
+        # ZONE별 열 생성
+        df = pd.DataFrame({f'ZONE{i + 1}': zone_matrix[i] for i in range(8)})
+
+        # 평균값 계산 (각 ZONE 열별로)
+        mean_series = df.mean(numeric_only=True)
+
+        # 평균값을 딕셔너리로 변환 + Tube ID / Job ID 추가
+        mean_row = mean_series.to_dict()
+        mean_row['Tube ID'] = tube_id
+        mean_row['JobNo'] = job_id
+
+        # 열 순서 지정
+        final_columns = ['Tube ID', 'JobNo'] + [f'ZONE{i + 1}' for i in range(8)]
+
+        # 1행짜리 평균 DataFrame 생성
+        mean_df = pd.DataFrame([mean_row])[final_columns]
+
+        # CSV로 저장
+        output_path = self.generate_output_path(tube_id, job_id, base_dir=self.base_dir)
+        mean_df.to_csv(output_path, index=False, encoding='utf-8-sig')
+        print(f"평균 CSV 저장 완료: {output_path}")
+
+        return mean_df
+
+    def merge_two_csv(self, tube_id: str, job_id: str) -> pd.DataFrame:
+        try:
+            # 하위 폴더 경로
+            sub_dir = os.path.join(self.base_dir, str(tube_id))
+
+            # RSHEET 및 PROC 패턴 파일 찾기
+            rsheet_pattern = os.path.join(sub_dir, f"T{tube_id}_{job_id}_RSHEET_*.csv")
+            proc_pattern = os.path.join(sub_dir, f"T{tube_id}_{job_id}_PROC_*.csv")
+
+            rsheet_files = glob.glob(rsheet_pattern)
+            proc_files = glob.glob(proc_pattern)
+
+            if not rsheet_files or not proc_files:
+                print("RSHEET 또는 PROC 파일을 찾을 수 없습니다.")
+                return pd.DataFrame()
+
+            # 최신 파일 선택
+            csv_path1 = max(rsheet_files, key=os.path.getmtime)
+            csv_path2 = max(proc_files, key=os.path.getmtime)
+
+            # CSV 로딩
+            df1 = pd.read_csv(csv_path1)
+            df2 = pd.read_csv(csv_path2)
+
+            # 인덱스 초기화
+            df1.reset_index(drop=True, inplace=True)
+            df2.reset_index(drop=True, inplace=True)
+
+            # 열 이름 충돌 방지 (선택: 접두사 추가)
+            df1 = df1.add_prefix("RSHEET_")
+            df2 = df2.add_prefix("PROC_")
+
+            # 중복 컬럼 제거: 예) Tube ID, JobNo가 양쪽에 다 있을 때 한쪽 제거
+            for col in ['PROC_Tube ID', 'PROC_JobNo']:
+                if col in df2.columns:
+                    df2.drop(columns=[col], inplace=True)
+
+            # 열 방향으로 병합
+            merged_df = pd.concat([df1, df2], axis=1)
+
+            # CSV 저장
+            output_path = self.generate_output_path(tube_id, job_id, base_dir=self.base_dir, process_data=2)
+            merged_df.to_csv(output_path, index=False, encoding='utf-8-sig')
+            print(f"병합 CSV 저장 완료: {output_path}")
+
+            return merged_df
+
+        except Exception as e:
+            print(f"병합 실패: {e}")
+            return pd.DataFrame()
+
+    def find_latest_file(self, tube_id: str, job_no: str, pattern_type: str = "RSHEET") -> str:
+        """
+        base_dir에서 주어진 패턴의 가장 최신 CSV 파일 경로 반환
+        pattern_type: RSHEET, PROC, MERGE 등
+        """
+        search_pattern = f"T{tube_id}_{job_no}_{pattern_type}_*.csv"
+        full_pattern = os.path.join(self.base_dir, search_pattern)
+
+        matched_files = glob.glob(full_pattern)
+
+        if not matched_files:
+            print(f"파일 없음: {search_pattern}")
+            return None
+
+        # 파일 생성 시간 기준으로 정렬하여 최신 파일 선택
+        latest_file = max(matched_files, key=os.path.getmtime)
+        return latest_file
+
+    def generate_output_path(self, tube_id: str, job_no: str, base_dir: str, process_data=0) -> str:
+        tube_id = str(tube_id)
+        job_no = str(job_no)
+
+        now = datetime.now()
+        timestamp = now.strftime("%Y%m%d_%H%M%S")  # 날짜_시간 형식
+
+        # tube_id 별 하위 폴더 생성
+        tube_dir = os.path.join(base_dir, tube_id)
+        os.makedirs(tube_dir, exist_ok=True)
+
+        # 파일명 구성
+        if process_data == 0:
+            filename = f"T{tube_id}_{job_no}_RSHEET_{timestamp}.csv"
+        elif process_data == 1:
+            filename = f"T{tube_id}_{job_no}_PROC_{timestamp}.csv"
+        elif process_data == 2:
+            filename = f"T{tube_id}_MERGE_{timestamp}.csv"
+        else:
+            filename = f"T{tube_id}_{job_no}_NULL_{timestamp}.csv"
+
+        # tube_id 하위 폴더에 저장
+        return os.path.join(tube_dir, filename)
+
+    """
+    FINS UDP DATA IN/OUT PROCESS
+    """
+    def data_receive(self):
+        config = SettingsPage.get_default_config()
+
+        fins = FinsUDPClient(plc_ip=config['ip'], plc_port=config['plc_port'], plc_node=config['plc_node'], pc_node=config['pc_node'])
+        self.data_read_available = fins.read_word_bit(mem_area=self.read_available_bit_area,
+                                                      word_addr=self.read_available_word,
+                                                      bit_offset=self.read_available_bit)
+
+        if self.data_read_available:
+            self.tube_id = fins.read_word(mem_area=0xA2, word_addr=0)
+            self.job_id = fins.read_word(mem_area=0xA2, word_addr=1)
+            sheet_res_data = fins.read_word(mem_area=0xA2, word_addr=2, word_count=72)
+            return self.tube_id, self.job_id, sheet_res_data
+        else:
+            return None
+
+
+if __name__ == "__main__":
+    processor = DataProcessor("C:/Users/202202773-NB/PycharmProjects/TunaGUI_QT/datasets")
+    tube_id, job_id, sheet_res_data = processor.data_receive()
+    processor.load_csv_to_dataframe()
+    print(processor.strip_process_dataframe())
+    processor.strip_sheet_res_dataframe(tube_id, job_id, sheet_res_data)
+    processor.merge_two_csv(tube_id, job_id)
+
