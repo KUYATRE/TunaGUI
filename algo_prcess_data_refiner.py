@@ -1,9 +1,11 @@
+from pandas import Series
+
 from algo_fins_comm import FinsUDPClient
-from ui_dashboard import SettingsPage
 from datetime import datetime
 import os
 import glob
 import pandas as pd
+import numpy as np
 
 
 class DataProcessor:
@@ -64,19 +66,21 @@ class DataProcessor:
         step_name = self.dataframe.iloc[0]['Step Name'] if not self.dataframe.empty else ''
         tube_id = self.dataframe.iloc[0]['Tube ID'] if not self.dataframe.empty else ''
         job_id = self.dataframe.iloc[0]['JobNo'] if not self.dataframe.empty else ''
+        step_time = len(self.dataframe)
 
         # 평균값 시리즈에 Step Name, Tube ID, JobNo 추가
         mean_row = mean_series.to_dict()
         mean_row['Step Name'] = step_name
         mean_row['Tube ID'] = tube_id
         mean_row['JobNo'] = job_id
+        mean_row['Step Time'] = step_time
 
         # 열 순서를 맞추기 위해 다시 정렬
-        final_columns = ['Step Name', 'Tube ID', 'JobNo'] + numeric_cols
+        final_columns = ['Step Name', 'Step Time', 'Tube ID', 'JobNo'] + numeric_cols
         mean_df = pd.DataFrame([mean_row])[final_columns]
 
         # CSV 파일 저장
-        output_path = self.generate_output_path(tube_id, job_id, base_dir=self.base_dir, process_data=1)
+        output_path = self.generate_output_path(tube_id, self.job_id, base_dir=self.base_dir, process_data=1)
         mean_df.to_csv(output_path, index=False, encoding='utf-8-sig')
         print(f"CSV 저장 완료: {output_path}")
 
@@ -144,27 +148,63 @@ class DataProcessor:
             df2.reset_index(drop=True, inplace=True)
 
             # 열 이름 충돌 방지 (선택: 접두사 추가)
-            df1 = df1.add_prefix("RSHEET_")
-            df2 = df2.add_prefix("PROC_")
+            df1 = df1.add_prefix("RS_")
+            df2 = df2.add_prefix("DRIN_")
 
             # 중복 컬럼 제거: 예) Tube ID, JobNo가 양쪽에 다 있을 때 한쪽 제거
-            for col in ['PROC_Tube ID', 'PROC_JobNo']:
+            for col in ['DRIN_Tube ID', 'DRIN_JobNo']:
                 if col in df2.columns:
                     df2.drop(columns=[col], inplace=True)
 
             # 열 방향으로 병합
             merged_df = pd.concat([df1, df2], axis=1)
 
-            # CSV 저장
-            output_path = self.generate_output_path(tube_id, job_id, base_dir=self.base_dir, process_data=2)
-            merged_df.to_csv(output_path, index=False, encoding='utf-8-sig')
-            print(f"병합 CSV 저장 완료: {output_path}")
-
-            return merged_df
+            return self.append_to_merge_csv(merged_df, tube_id, job_id)
 
         except Exception as e:
             print(f"병합 실패: {e}")
             return pd.DataFrame()
+
+    def append_to_merge_csv(self, new_merged_df: pd.DataFrame, tube_id: str, job_id: str) -> pd.DataFrame:
+        try:
+            sub_dir = os.path.join(self.base_dir, str(tube_id))
+            os.makedirs(sub_dir, exist_ok=True)
+
+            merge_pattern = os.path.join(sub_dir, f"T{tube_id}_MERGE_*.csv")
+            existing_merge_files = glob.glob(merge_pattern)
+
+            if existing_merge_files:
+                latest_merge = max(existing_merge_files, key=os.path.getmtime)
+                existing_df = pd.read_csv(latest_merge)
+
+                combined_df = pd.concat([existing_df, new_merged_df], ignore_index=True)
+
+                if "RS_Tube ID" in combined_df.columns and "RS_JobNo" in combined_df.columns:
+                    combined_df.drop_duplicates(subset=["RS_Tube ID", "RS_JobNo"], keep='last', inplace=True)
+                else:
+                    print("중복 기준 열 없음 → 단순 추가만 수행됨")
+
+            else:
+                combined_df = new_merged_df
+
+            # 항상 새로운 파일명 생성
+            output_path = self.generate_output_path(tube_id, job_id, base_dir=self.base_dir, process_data=2)
+            combined_df.to_csv(output_path, index=False, encoding='utf-8-sig')
+            print(f"MERGE 갱신 완료 → {output_path}")
+
+            # 기존 MERGE 파일 삭제 (구버전 제거)
+            for old_file in existing_merge_files:
+                if old_file != output_path:
+                    try:
+                        os.remove(old_file)
+                    except Exception as e:
+                        print(f"이전 MERGE 파일 삭제 실패: {old_file} → {e}")
+
+            return combined_df
+
+        except Exception as e:
+            print(f"MERGE append 실패: {e}")
+            return new_merged_df
 
     def find_latest_file(self, tube_id: str, job_no: str, pattern_type: str = "RSHEET") -> str:
         """
@@ -211,28 +251,89 @@ class DataProcessor:
     """
     FINS UDP DATA IN/OUT PROCESS
     """
-    def data_receive(self):
-        config = SettingsPage.get_default_config()
-
-        fins = FinsUDPClient(plc_ip=config['ip'], plc_port=config['plc_port'], plc_node=config['plc_node'], pc_node=config['pc_node'])
-        self.data_read_available = fins.read_word_bit(mem_area=self.read_available_bit_area,
-                                                      word_addr=self.read_available_word,
-                                                      bit_offset=self.read_available_bit)
+    def data_receive(self, ip, plc_port, plc_node, pc_node, available_bit):
+        fins = FinsUDPClient(plc_ip=ip, plc_port=plc_port, plc_node=plc_node, pc_node=pc_node)
+        self.data_read_available = available_bit
+        bit_startup = fins.read_word_bit(mem_area=0xA0, word_addr=0, bit_offset=2)
 
         if self.data_read_available:
             self.tube_id = fins.read_word(mem_area=0xA2, word_addr=0)
             self.job_id = fins.read_word(mem_area=0xA2, word_addr=1)
-            sheet_res_data = fins.read_word(mem_area=0xA2, word_addr=2, word_count=72)
+            if not bit_startup:
+                sheet_res_data = fins.read_word(mem_area=0xA2, word_addr=2, word_count=72)
+            else:
+                startup = OnlyUseInStartUp()
+                sheet_res_data = startup.generate_random_array(200,205, 72, float)
+
             return self.tube_id, self.job_id, sheet_res_data
         else:
             return None
 
 
+"""
+Only for startup
+"""
+class OnlyUseInStartUp:
+
+    def generate_random_array(self, start: float, end: float, size: int, dtype=float) -> np.ndarray:
+        print("시운전 기능: 면저항 데이터 난수 출력")
+        if dtype == int:
+            return np.random.randint(start, end+1, size=size)
+        else:
+            return np.random.uniform(start, end, size=size)
+
+    @staticmethod
+    def generate_dummy_from_base(base_row: pd.Series, num_rows: int = 10, start_jobno: int = None) -> pd.DataFrame:
+        dummy_rows = []
+
+        base_jobno = base_row['RS_JobNo']
+        print(f"기준 JobNo: {base_jobno}")
+        if start_jobno is None:
+            start_jobno = int(base_jobno) + 1
+
+        for i in range(num_rows):
+            # 반드시 deep copy로 새로운 인스턴스 생성
+            new_row = base_row.copy(deep=True)
+
+            # JobNo 자동 증가
+            new_jobno = start_jobno + i
+            new_row['RS_JobNo'] = new_jobno
+
+            print(f"--- Row {i + 1} ---")
+            print(f"생성된 JobNo: {new_jobno}")
+
+            for col in base_row.index:
+                val = base_row[col]
+
+                if col in ['RS_Tube ID', 'RS_JobNo', 'DRIN_Step Name']:
+                    continue
+
+                elif col == 'DRIN_Step Time' and pd.api.types.is_numeric_dtype(type(val)):
+                    delta = int(val * 0.05)
+                    offset = i / 5
+                    if delta == 0: delta = 1  # 최소 1 보장
+                    new_val = np.random.randint(val - delta + offset, val + delta + offset + 1)
+                    new_row[col] = int(new_val)
+                    print(f"Step Time 변경: {val} → {new_val}")
+
+                elif pd.api.types.is_numeric_dtype(type(val)):
+                    delta = int(val * 0.05)
+                    offset = i/5
+                    if delta == 0: delta = 1
+                    new_val = np.random.randint(val - delta + offset, val + delta + offset + 1)
+                    new_row[col] = int(new_val)
+
+            # 새로운 row는 완전히 복사하여 리스트에 저장 (덮어쓰기 방지)
+            dummy_rows.append(new_row.copy(deep=True))
+
+        return pd.DataFrame(dummy_rows)
+
+
+
 if __name__ == "__main__":
-    processor = DataProcessor("C:/Users/202202773-NB/PycharmProjects/TunaGUI_QT/datasets")
-    tube_id, job_id, sheet_res_data = processor.data_receive()
-    processor.load_csv_to_dataframe()
-    print(processor.strip_process_dataframe())
-    processor.strip_sheet_res_dataframe(tube_id, job_id, sheet_res_data)
-    processor.merge_two_csv(tube_id, job_id)
+    startup = OnlyUseInStartUp()
+    dataframe = pd.read_csv(r"C:\Users\202202773-NB\PycharmProjects\TunaGUI_QT\datasets\13\T13_MERGE_20250716_144313.csv")
+    dummy_df = startup.generate_dummy_from_base(base_row=dataframe.iloc[0], num_rows=500)
+    dummy_df.to_csv("datasets/MERGE_dummy_data.csv", index=False)
+
 

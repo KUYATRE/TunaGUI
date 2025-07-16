@@ -1,32 +1,35 @@
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
 
-import numpy as np
 import pandas as pd
 
-# 경고 메시지 출력 억제 코드
-import warnings
-warnings.simplefilter(action='ignore')
+# FILE_PATH = r'C:\Users\202202773-NB\PycharmProjects\TunaGUI_QT\datasets\MERGE_dummy_data.csv'
+#
+# df = pd.read_csv(FILE_PATH)
+def regressor(df :pd.DataFrame, zone :int):
+    rs_zone_cols = df.columns[df.columns.str.contains(f'RS_ZONE{zone}', case=False)]
+    step_time_cols = df.columns[df.columns.str.contains('DRIN_Step Time', case=False)]
+    zone_sp_cols = df.columns[df.columns.str.contains(fr'ZONE{zone}\(SP\)', case=False)]
 
-GENDER_FILE_PATH = 'C:/Users/grbgr/PycharmProjects/TunaGUI/datasets/gender.csv'
+    input_cols = rs_zone_cols.union(step_time_cols).union(zone_sp_cols)
+    df_zone = df[input_cols]
 
-# 데이터 셋을 가지고 온다
-gender_df = pd.read_csv(GENDER_FILE_PATH)
+    X = df_zone.loc[:, df_zone.columns.str.contains('DRIN', case=False)]
+    y = df_zone.loc[:, df_zone.columns.str.contains('RS', case=False)]
+    print(X)
+    print(y)
 
-X = pd.get_dummies(gender_df.drop(['Gender'], axis=1)) # 입력 변수를 one-hot encode한다
-y = gender_df[['Gender']].values.ravel()
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=5)
+    model = LinearRegression()
+    model.fit(X_train, y_train)
 
-# 여기에 코드를 작성하세요
-hyper_parameter = {
-    'penalty': ['l1', 'l2'],
-    'max_iter': [500, 1000, 1500, 2000]
-}
+    y_test_predict = model.predict(X_test)
 
-logistic_model = LogisticRegression()
-hyper_parameter_tuner = GridSearchCV(logistic_model, hyper_parameter, cv=5)
-hyper_parameter_tuner.fit(X, y)
+    mse = mean_squared_error(y_test, y_test_predict)
 
-best_params = hyper_parameter_tuner.best_params_
+    print("Intercept (theta_0):", model.intercept_)
+    print("Coefficients (theta_1~n):", model.coef_)
+    print(f"RMSE: {mse**0.5}")
 
-# 테스트 코드
-print(best_params)
+    return model.intercept_, model.coef_
