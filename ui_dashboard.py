@@ -197,58 +197,15 @@ class SettingsPage(QWidget):
         path_layout.addWidget(QLabel("로그 경로 : "))
         path_layout.addWidget(self.path_input)
 
-        # === 세타 값 표시용 QLabel 추가 ===
-        self.theta_display_label = QLabel("회귀 결과 대기 중...")
-        self.theta_display_label.setAlignment(Qt.AlignLeft)
-        self.theta_display_label.setStyleSheet("font-size: 16pt; font-weight: bold; padding: 10px;")
+        self.theta_plot_canvas = ThetaPlotCanvas()
 
         layout.addLayout(ip_layout)
         layout.addLayout(path_layout)
         layout.addWidget(self.status_label)
-        layout.addWidget(self.theta_display_label)
+        layout.addWidget(self.theta_plot_canvas)
 
-        # === 세타 시각화 코드 추가 ===
-        # self.theta_plot_canvas = ThetaPlotCanvas()
-        # layout.addWidget(self.theta_plot_canvas)
-        #
-        # self.regression_canvas = RegressionLineCanvas()
-        # layout.addWidget(self.regression_canvas)
-        #
-        # self.dual_regression_canvas = DualRegressionCanvas()
-        # layout.addWidget(self.dual_regression_canvas)
-        path_temp = r'C:\Users\202202773-NB\PycharmProjects\TunaGUI_QT\datasets\MERGE_dummy_data.csv'
-        try:
-            print(f"[DEBUG] 파일 로딩 시도: {path_temp}")
-            df = pd.read_csv(path_temp)
-            print(f"[DEBUG] 컬럼 목록: {df.columns.tolist()}")
-
-            step_col = next((c for c in df.columns if 'step' in c.lower() and 'time' in c.lower()), None)
-            zone_col = next((c for c in df.columns if f'zone{self.selected_zone_number}' in c.lower() and 'sp' in c.lower()),
-                            None)
-
-            print(f"[DEBUG] 탐색된 step_col: {step_col}, zone_col: {zone_col}")
-
-            if step_col and zone_col:
-                df[f'RS_ZONE{self.selected_zone_number}'] = 0.4 * df[step_col] + 0.2 * df[zone_col] + 50
-                self.df_plot = df
-                self.theta0 = 50
-                self.theta1 = 0.4
-                self.theta2 = 0.2
-                print(f"[DEBUG] 회귀 입력 생성 완료 → step='{step_col}', zone='{zone_col}'")
-            else:
-                print("[ERROR] 유사한 step/zone 컬럼을 찾을 수 없습니다.")
-                self.df_plot = None
-        except Exception as e:
-            print(f"[ERROR] MERGE 파일 로딩 실패: {e}")
-            self.df_plot = None
-
-        if self.df_plot is not None:
-            print("[DEBUG] df_plot 성공적으로 생성됨, 위젯 추가 시도")
-            widget = FixedRegressionPlotWidget(self.df_plot, self.theta0, self.theta1, self.theta2, self.selected_zone_number)
-            layout.addWidget(widget)
-        else:
-            print("[DEBUG] df_plot이 None 상태, 회귀 시각화 불가")
-            layout.addWidget(QLabel("회귀 시각화 불가: 데이터가 없거나 컬럼이 누락되었습니다."))
+        self.dual_regression_canvas = DualRegressionCanvas()
+        layout.addWidget(self.dual_regression_canvas)
 
         return layout
 
@@ -423,8 +380,13 @@ class SettingsPage(QWidget):
             filtered_df = df[filtered_cols]
             self.display_dataframe(filtered_df)
 
-            intercept, coef = regressor(filtered_df, zone_number)
-            self.display_theta_values(zone_number, intercept, coef, filtered_df)
+            X1, y1, X2, y2, intercept_time, coef_time, intercept_temp, coef_temp = regressor(filtered_df, zone_number)
+            self.theta_plot_canvas.plot_text(
+                "Step Time", intercept_time, coef_time,
+                "SetPoint", intercept_temp, coef_temp
+            )
+            self.dual_regression_canvas.plot_dual_regression(X1, y1, intercept_time, coef_time, X2, y2, intercept_temp,
+                                                             coef_temp)
 
         except Exception as e:
             print(f"MERGE CSV 불러오기 오류: {e}")
@@ -446,13 +408,11 @@ class SettingsPage(QWidget):
 
         self.table_widget.resizeColumnsToContents()
 
-    def display_theta_values(self, zone, intercept, coef, df):
+    def display_theta_values(self, X, y, intercept, coef):
         coef_strs = []
 
         # DRIN_ZONE만 포함된 입력 컬럼만 필터링
-        X_columns1 = df.columns[df.columns.str.contains(fr'DRIN_ZONE{zone}\(SP\)', case=False)]
-        X_columns2 = df.columns[df.columns.str.contains(f'DRIN_Step Time', case=False)]
-        X_columns = X_columns1.union(X_columns2)
+        X_columns = pd.DataFrame(X).columns.tolist()
 
         # 디버그 출력
         print(f"[디버그] X 컬럼 수: {len(X_columns)}, 계수 수: {len(coef)}")
@@ -483,27 +443,6 @@ class SettingsPage(QWidget):
         self.theta_display_label.setText(
             f"절편 (Intercept): {intercept_val:.6f}\n\n계수 (Coefficients):\n{coef_text}"
         )
-
-        # === y 생성 후 그래프 표시 ===
-        y_cols = df.columns[df.columns.str.contains(f'RS_ZONE{zone}', case=False)]
-        if not y_cols.empty:
-            y = df[y_cols].iloc[:, 0]
-            X = df[X_columns]
-            if hasattr(self, 'theta_plot_canvas'):
-                self.theta_plot_canvas.plot_distribution(y.values, intercept_val)
-
-        if hasattr(self, 'regression_canvas') and len(X_columns) > 0:
-            x_input = df[X_columns]
-            y_target = df[y_cols].iloc[:, 0]
-            self.regression_canvas.plot_regression(x_input, y_target, intercept_val, coef)
-
-        if hasattr(self, 'dual_regression_canvas'):
-            self.dual_regression_canvas.plot_dual_regression(X, y, intercept, coef)
-
-        self.df_plot = X_columns.union(y_cols)
-        self.theta0 = intercept_val
-        self.theta1 = coef[0]
-        self.theta2 = coef[1]
 
 
     def disconnect(self):
@@ -560,41 +499,6 @@ class SettingsPage(QWidget):
         self.hb_plc_lamp_text_label.setText("Heartbeat(PLC)")
         self.hb_plc_lamp_text_label.setStyleSheet("color: black; font-weight: bold;")
 
-class ThetaPlotCanvas(FigureCanvas):
-    def __init__(self, parent=None, width=5, height=3, dpi=100):
-        self.fig = Figure(figsize=(width, height), dpi=dpi)
-        self.ax = self.fig.add_subplot(111)
-        super().__init__(self.fig)
-        self.setParent(parent)
-        self.plot_reference_done = False
-
-    def plot_distribution(self, y, intercept):
-        self.ax.clear()
-
-        # NaN 및 이상치 제거
-        y = np.array(y)
-        y = y[np.isfinite(y)]
-
-        if len(y) == 0:
-            self.ax.text(0.5, 0.5, "데이터 없음", ha='center', va='center', transform=self.ax.transAxes)
-            self.draw()
-            return
-
-        self.ax.hist(y, bins=30, alpha=0.6, color='skyblue', edgecolor='black')
-        self.ax.axvline(intercept, color='red', linestyle='--', label=f'Intercept: {intercept:.2f}')
-
-        # X축 확대 여유
-        min_y, max_y = y.min(), y.max()
-        margin = (max_y - min_y) * 0.1 if max_y != min_y else 1
-        self.ax.set_xlim(min_y - margin, max_y + margin)
-
-        self.ax.set_title("목표 변수 분포 및 절편")
-        self.ax.set_xlabel("y 값")
-        self.ax.set_ylabel("빈도")
-        self.ax.legend()
-        self.fig.tight_layout()
-        self.draw()
-
 
 class RegressionLineCanvas(FigureCanvas):
     def __init__(self, parent=None, width=5, height=3, dpi=100):
@@ -635,99 +539,64 @@ class DualRegressionCanvas(FigureCanvas):
         self.setParent(parent)
         self.setStyleSheet("background-color: #1e1e1e;")
 
-    def plot_dual_regression(self, X, y, intercept, coef):
-        x1 = X.iloc[:, 0].values
-        x2 = X.iloc[:, 1].values
-        y_vals = y.values
-
+    def plot_dual_regression(self, X1, y1, intercept1, coef1, X2=None, y2=None, intercept2=None, coef2=None):
         self.ax1.clear()
         self.ax2.clear()
         self.ax1.set_facecolor('#1e1e1e')
         self.ax2.set_facecolor('#1e1e1e')
 
-        # 첫 번째 입력 변수에 대한 회귀선
-        self.ax1.scatter(x1, y_vals, color='deepskyblue', edgecolors='white')
-        x1_line = np.linspace(x1.min(), x1.max(), 100)
-        y1_line = intercept + coef[0] * x1_line
-        self.ax1.plot(x1_line, y1_line, color='deeppink', linewidth=2)
-        self.ax1.set_title(f'{X.columns[0]} vs y', color='white')
-        self.ax1.set_xlabel(X.columns[0], color='white')
+        # 첫 번째 회귀 결과 그리기
+        x_vals1 = X1.iloc[:, 0].values
+        y_vals1 = y1.values.flatten()
+        self.ax1.scatter(x_vals1, y_vals1, color='deepskyblue', edgecolors='white')
+        x_line1 = np.linspace(x_vals1.min(), x_vals1.max(), 100)
+        y_line1 = intercept1 + coef1[0] * x_line1
+        self.ax1.plot(x_line1, y_line1, color='deeppink', linewidth=2)
+        self.ax1.set_title(f'{X1.columns[0]} vs y', color='white')
+        self.ax1.set_xlabel(X1.columns[0], color='white')
         self.ax1.set_ylabel('y', color='white')
         self.ax1.tick_params(colors='white')
 
-        # 두 번째 입력 변수에 대한 회귀선
-        self.ax2.scatter(x2, y_vals, color='deepskyblue', edgecolors='white')
-        x2_line = np.linspace(x2.min(), x2.max(), 100)
-        y2_line = intercept + coef[1] * x2_line
-        self.ax2.plot(x2_line, y2_line, color='deeppink', linewidth=2)
-        self.ax2.set_title(f'{X.columns[1]} vs y', color='white')
-        self.ax2.set_xlabel(X.columns[1], color='white')
-        self.ax2.set_ylabel('y', color='white')
-        self.ax2.tick_params(colors='white')
+        # 두 번째 회귀 결과가 주어진 경우 그리기
+        if X2 is not None and y2 is not None and intercept2 is not None and coef2 is not None:
+            x_vals2 = X2.iloc[:, 0].values
+            y_vals2 = y2.values.flatten()
+            self.ax2.scatter(x_vals2, y_vals2, color='deepskyblue', edgecolors='white')
+            x_line2 = np.linspace(x_vals2.min(), x_vals2.max(), 100)
+            y_line2 = intercept2 + coef2[0] * x_line2
+            self.ax2.plot(x_line2, y_line2, color='deeppink', linewidth=2)
+            self.ax2.set_title(f'{X2.columns[0]} vs y', color='white')
+            self.ax2.set_xlabel(X2.columns[0], color='white')
+            self.ax2.set_ylabel('y', color='white')
+            self.ax2.tick_params(colors='white')
 
         self.fig.tight_layout()
         self.draw()
 
 
-class FixedRegressionPlotWidget(QWidget):
-    def __init__(self, df, theta0, theta1, theta2, selected_zone=None, parent=None):
-        super().__init__(parent)
-        self.df = df
-        self.theta0 = theta0
-        self.theta1 = theta1
-        self.theta2 = theta2
-        self.selected_zone = selected_zone if selected_zone is not None else 1  # fallback 처리
-        print(f"[DEBUG] FixedRegressionPlotWidget 초기화 - selected_zone: {self.selected_zone}")
-        self.init_ui()
+class ThetaPlotCanvas(FigureCanvas):
+    def __init__(self, parent=None, width=5, height=3, dpi=100):
+        self.fig = Figure(figsize=(width, height), dpi=dpi)
+        self.ax = self.fig.add_subplot(111)
+        super().__init__(self.fig)
+        self.setParent(parent)
 
-    def init_ui(self):
-        layout = QVBoxLayout(self)
+    def plot_text(self, title1, intercept1, coef1, title2, intercept2, coef2):
+        self.ax.clear()
+        self.ax.axis('off')
 
-        # 컬럼 후보 여러 개 지정하여 유연하게 매칭
-        zone_col_candidates = [
-            f"DRIN_ZONE{self.selected_zone}(SP)",
-            f"DRIN_ZONE{self.selected_zone}_SP",
-            f"DRIN_ZONE{self.selected_zone}"
-        ]
+        lines = []
+        lines.append(f'[{title1}]')
+        lines.append(f'절편: {float(intercept1):.6f}')
+        for i, val in enumerate(np.ravel(coef1)):
+            lines.append(f'계수{i + 1}: {float(val):.6f}')
 
-        zone_col = next((col for col in zone_col_candidates if col in self.df.columns), None)
+        lines.append('')
+        lines.append(f'[{title2}]')
+        lines.append(f'절편: {float(intercept2):.6f}')
+        for i, val in enumerate(np.ravel(coef2)):
+            lines.append(f'계수{i + 1}: {float(val):.6f}')
 
-        print(f"[DEBUG] 사용 가능한 zone 컬럼 후보: {zone_col_candidates}")
-        print(f"[DEBUG] 선택된 zone_col: {zone_col}")
-
-        if (
-            self.df is not None and
-            'DRIN_Step Time' in self.df.columns and
-            zone_col is not None and
-            'y' in self.df.columns
-        ):
-            fig = self.plot_regression(zone_col)
-            canvas = FigureCanvas(fig)
-            layout.addWidget(canvas)
-        else:
-            print("[ERROR] 회귀 시각화 실패 - 컬럼 확인 필요")
-            layout.addWidget(QLabel("회귀 시각화 불가: 필요한 컬럼이 없습니다."))
-
-    def plot_regression(self, zone_col):
-        x1 = self.df['DRIN_Step Time'].values
-        x2 = self.df[zone_col].values
-        y = self.df['y'].values
-
-        y_pred = self.theta0 + self.theta1 * x1 + self.theta2 * x2
-
-        fig = plt.figure(figsize=(10, 6))
-        ax = fig.add_subplot(111, projection='3d')
-        ax.scatter(x1, x2, y, color='deepskyblue', edgecolor='white', label='Actual')
-
-        x1_grid, x2_grid = np.meshgrid(
-            np.linspace(x1.min(), x1.max(), 20),
-            np.linspace(x2.min(), x2.max(), 20)
-        )
-        y_grid = self.theta0 + self.theta1 * x1_grid + self.theta2 * x2_grid
-
-        ax.plot_surface(x1_grid, x2_grid, y_grid, color='deeppink', alpha=0.6)
-        ax.set_xlabel('DRIN_Step Time')
-        ax.set_ylabel(zone_col)
-        ax.set_zlabel('y')
-        ax.set_title(f'y = θ₀ + θ₁ * Step + θ₂ * {zone_col}')
-        return fig
+        full_text = '\n'.join(lines)
+        self.ax.text(0.01, 0.99, full_text, ha='left', va='top', fontsize=16, wrap=True, transform=self.ax.transAxes)
+        self.draw()

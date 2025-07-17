@@ -317,8 +317,8 @@ class OnlyUseInStartUp:
                     print(f"Step Time 변경: {val} → {new_val}")
 
                 elif pd.api.types.is_numeric_dtype(type(val)):
-                    delta = int(val * 0.05)
-                    offset = i/5
+                    delta = int(val * 0.005)
+                    offset = i/10
                     if delta == 0: delta = 1
                     new_val = np.random.randint(val - delta + offset, val + delta + offset + 1)
                     new_row[col] = int(new_val)
@@ -332,7 +332,7 @@ class OnlyUseInStartUp:
 
 if __name__ == "__main__":
     startup = OnlyUseInStartUp()
-    dataframe = pd.read_csv(r"C:\Users\202202773-NB\PycharmProjects\TunaGUI_QT\datasets\13\T13_MERGE_20250716_144313.csv")
+    dataframe = pd.read_csv(r"C:\Users\202202773-NB\PycharmProjects\TunaGUI_QT\datasets\13\T13_MERGE_20250717_082549.csv")
     dummy_df = startup.generate_dummy_from_base(base_row=dataframe.iloc[0], num_rows=500)
     dummy_df.to_csv("datasets/MERGE_dummy_data.csv", index=False)
 
