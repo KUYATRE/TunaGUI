@@ -28,8 +28,8 @@ def detect_heater_zones(headers):
 
 def temp_data_scraping(cmode, rows):
     """
-    Normal temperature : Recipe 온도 유지 구가나 기준으로 분석(BCl3 기준 step name = 'Drive in')
-    High temperatuere : Recipe 온도 유지 구가나 기준으로 분석(BCl3 기준 step name = 'Dry-Ox')
+    Normal temperature : Recipe 온도 유지 구간 기준으로 분석(BCl3 기준 step name = 'Drive in')
+    High temperatuere : Recipe 온도 유지 구간 기준으로 분석(BCl3 기준 step name = 'Dry-Ox')
     1. 설비군 별 Recipe 구성에 따라 조건 변경 필요
     2. 동적 분석 가능 하도록 코드 수정 필요
     """
