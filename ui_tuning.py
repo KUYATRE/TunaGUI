@@ -8,7 +8,9 @@ from PySide6.QtGui import QColor, QFont
 from PySide6.QtCore import Qt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from algo_logAnalyser import get_file, detect_heater_zones, consol_controller, extract_all_zones_all_series_limited
+from algo_logAnalyser import get_file, detect_heater_zones, consol_controller, extract_all_zones_all_series_limited, \
+    save_tuning_parameter_rows, get_any_data_from_column
+import os
 
 class TuningPage(QWidget):
     def __init__(self):
@@ -18,6 +20,9 @@ class TuningPage(QWidget):
         self.selected_temp_mode = "normal"
         self.selected_etype = "BCl3"
         self.init_ui()
+        self.selected_log_filename = ""
+        self.tube_id = 0
+        self.job_id = 0
 
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -98,6 +103,9 @@ class TuningPage(QWidget):
             self.data_rows = get_file(file_path)
             self.file_label.setText(file_path)
             self.file_label.setStyleSheet("color: #00cc00; font-style: italic; font-weight: bold;")
+
+            self.selected_log_filename = os.path.basename(file_path)
+            print(f"File selected: {self.selected_log_filename}")
         return file_path
 
     def run_analysis(self):
@@ -111,6 +119,12 @@ class TuningPage(QWidget):
         p1, initial_p2, p2, recipe_step = consol_controller(
             self.selected_temp_mode, self.selected_etype, self.data_rows)
         self.zone_data = extract_all_zones_all_series_limited(self.data_rows, recipe_step)
+        self.tube_id = get_any_data_from_column(self.data_rows, 'Tube ID')
+        print(f"Tube ID: {self.tube_id}")
+        self.job_id = get_any_data_from_column(self.data_rows, 'JobNo')
+        print(f"Job No: {self.job_id}")
+        save_tuning_parameter_rows(self.selected_log_filename, self.tube_id, self.job_id, p1, initial_p2, p2)
+        print(f"log file save completed")
 
         self.result_label.setText("분석 완료! (Zone 헤더 클릭으로 그래프 확인 가능)")
 

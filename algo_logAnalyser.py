@@ -5,6 +5,9 @@
 4. 컴파일러 없이 동작할 수 있도록 pyinstaller를 통해 exe 생성할 것
 """
 import csv
+import os
+import sys
+from datetime import datetime
 
 def get_file(path):
     with open(path, 'r', encoding='utf-8') as f:
@@ -16,6 +19,160 @@ def get_file(path):
 
     #print(rows)
     return rows
+"""
+base directory 탐색
+"""
+def get_base_dir():
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+        print(f".exe executed : {base_dir}")
+    else:
+        base_dir = os.path.dirname(os.path.realpath(__file__))
+        print(f".py executed : {base_dir}")
+    return base_dir
+
+"""
+dataset folder 탐색 및 생성
+"""
+def ensure_dataset_dir():
+    base_dir = get_base_dir()
+    dataset_dir = os.path.join(base_dir, 'datasets')
+
+    if not os.path.isdir(dataset_dir):
+        os.makedirs(dataset_dir)
+        print(f"Created dataset directory : {dataset_dir}")
+    else:
+        print(f"Dataset directory already exists : {dataset_dir}")
+
+    return dataset_dir
+
+"""
+TuningLog 폴더 datasets 폴더 내에서 탐색 및 생성
+"""
+def ensure_tuninglog_dir():
+    dataset_dir = ensure_dataset_dir()
+    tuninglog_dir = os.path.join(dataset_dir, 'TuningLog')
+
+    if not os.path.exists(tuninglog_dir):
+        os.makedirs(tuninglog_dir)
+        print(f"Created TuningLog directory: {tuninglog_dir}")
+    else:
+        print(f"TuningLog directory already exists: {tuninglog_dir}")
+
+    return tuninglog_dir
+
+"""
+RegressionLog 폴더 datasets 폴더 내에서 탐색 및 생성
+"""
+def ensure_regressionlog_dir():
+    dataset_dir = ensure_dataset_dir()
+    regressionlog_dir = os.path.join(dataset_dir, 'RegressionLog')
+
+    if not os.path.exists(regressionlog_dir):
+        os.makedirs(regressionlog_dir)
+        print(f"Created RegressionLog directory: {regressionlog_dir}")
+    else:
+        print(f"RegressionLog directory already exists: {regressionlog_dir}")
+
+    return regressionlog_dir
+
+"""
+TuningLog 폴더 내에 T{숫자} 폴더 탐색 및 생성
+"""
+def ensure_tuning_subdir(log_filename: str):
+    tuninglog_dir = ensure_tuninglog_dir()
+
+    # T폴더명 추출 (파일명 가장 앞의 'T숫자' 형식)
+    base_name = os.path.basename(log_filename)
+    t_folder_name = base_name.split('_')[0]
+
+    # 예외 처리: 'T숫자' 형식이 아닌 경우
+    if not t_folder_name.startswith('T') or not t_folder_name[1:].isdigit():
+        raise ValueError(f"There's no accurate tube id in log file name: {log_filename}")
+
+    t_folder_path = os.path.join(tuninglog_dir, t_folder_name)
+    os.makedirs(t_folder_path, exist_ok=True)
+
+    return t_folder_path
+
+"""
+RegressionLog 폴더 내에 T{숫자} 폴더 탐색 및 생성
+"""
+def ensure_regression_subdir(log_filename: str):
+    regressionlog_dir = ensure_regressionlog_dir()
+
+    # T폴더명 추출 (파일명 가장 앞의 'T숫자' 형식)
+    base_name = os.path.basename(log_filename)
+    t_folder_name = base_name.split('_')[0]
+
+    # 예외 처리: 'T숫자' 형식이 아닌 경우
+    if not t_folder_name.startswith('T') or not t_folder_name[1:].isdigit():
+        raise ValueError(f"There's no accurate tube id in log file name: {log_filename}")
+
+    t_folder_path = os.path.join(regressionlog_dir, t_folder_name)
+    os.makedirs(t_folder_path, exist_ok=True)
+
+    return t_folder_path
+
+"""
+Tuning log 찍기
+"""
+def save_tuning_parameter_rows(log_filename: str, tube_id, job_id,
+                               p1_list, init_p2_list, adj_p2_list,
+                               filename="tuning_parameters.csv"):
+
+    folder_path = ensure_tuning_subdir(log_filename)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    file_path = os.path.join(folder_path, filename)
+
+    file_exists = os.path.exists(file_path)
+    job_id_exists = False
+
+    # 1. 파일이 존재하면 중복된 Job ID 있는지 확인
+    if file_exists:
+        with open(file_path, mode='r', newline='', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            header = next(reader, None)  # 헤더 스킵
+            for row in reader:
+                if len(row) >= 3 and row[2] == str(job_id):
+                    job_id_exists = True
+                    break
+
+    if job_id_exists:
+        print(f"Job ID '{job_id}'already exist. row creation denied")
+        return
+
+    # 2. 파일에 새로 행 작성 (append 또는 새 파일 생성)
+    with open(file_path, mode='a' if file_exists else 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+
+        if not file_exists:
+            # 헤더 작성
+            writer.writerow(["Time", "Tube ID", "JobNo"]
+                            + [f"ini_p2_Zone{i+1}" for i in range(len(init_p2_list))]
+                            + [f"p1_Zone{i+1}" for i in range(len(p1_list))]
+                            + [f"p2_Zone{i+1}" for i in range(len(adj_p2_list))])
+
+        # 새 행 작성
+        writer.writerow([timestamp, tube_id, job_id] + init_p2_list + p1_list + adj_p2_list)
+
+    print(f"CSV log saved: {file_path}")
+
+def get_any_data_from_column(data_rows: list, column_name : str):
+    if not data_rows:
+        raise ValueError("data_rows are empty")
+
+    header = data_rows[0]
+    if column_name not in header:
+        raise ValueError(f"Column '{column_name}' not found")
+
+    col_idx = header.index(column_name)
+
+    for row in data_rows[1:]:  # 첫 행은 헤더, 이후부터 데이터
+        if len(row) > col_idx:
+            return row[col_idx]
+
+    return None
 
 def detect_heater_zones(headers):
     """
