@@ -8,9 +8,15 @@ import pandas as pd
 #
 # df = pd.read_csv(FILE_PATH)
 def regressor(df :pd.DataFrame, zone :int):
-    rs_zone_cols = df.columns[df.columns.str.contains(f'RS_ZONE{zone}', case=False)]
+    if zone == 1:
+        target_zone = 1
+    elif zone == 8:
+        target_zone = 7
+    else:
+        target_zone = zone
+    rs_zone_cols = df.columns[df.columns.str.contains(f'RS_ZONE{target_zone}', case=False)]
     step_time_cols = df.columns[df.columns.str.contains('DRIN_Step Time', case=False)]
-    zone_sp_cols = df.columns[df.columns.str.contains(fr'ZONE{zone}\(SP\)', case=False)]
+    zone_sp_cols = df.columns[df.columns.str.contains(fr'ZONE{target_zone}\(SP\)', case=False)]
 
     input_cols1 = rs_zone_cols.union(step_time_cols)
     input_cols2 = rs_zone_cols.union(zone_sp_cols)
@@ -46,7 +52,7 @@ def regressor(df :pd.DataFrame, zone :int):
     y2_test_predict = model2.predict(X2_test)
 
     mse2 = mean_squared_error(y2_test, y2_test_predict)
-    print("==MODEL1 PARAMETERS==\n")
+    print("==MODEL2 PARAMETERS==\n")
     print("Intercept (theta_0):", model1.intercept_)
     print("Coefficients (theta_1~n):", model1.coef_)
     print(f"RMSE: {mse2 ** 0.5}")

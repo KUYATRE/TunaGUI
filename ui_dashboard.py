@@ -7,6 +7,7 @@ from algo_fins_comm import FinsUDPClient
 from algo_fins_checkconnection import CheckConnectionWorker
 from algo_prcess_data_refiner import DataProcessor
 from algo_scikit_learn import regressor
+from algo_logAnalyser import ensure_dataset_dir
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
@@ -190,9 +191,10 @@ class SettingsPage(QWidget):
         # === 경로 입력 행 추가 ===
         path_layout = QHBoxLayout()
         self.path_input = QLineEdit()
-        saved_path = self.settings.value("data_path", r"C:\Users\202202773-NB\PycharmProjects\TunaGUI_QT\datasets")
+        saved_path = ensure_dataset_dir()
+        print(f"ui_dashboard log file directory default selected: {saved_path}")
         self.path_input.setText(saved_path)
-        self.path_input.textChanged.connect(self.save_path_to_settings)
+        # self.path_input.textChanged.connect(self.save_path_to_settings)
 
         path_layout.addWidget(QLabel("로그 경로 : "))
         path_layout.addWidget(self.path_input)
@@ -235,6 +237,12 @@ class SettingsPage(QWidget):
 
     def zone_selection_changed(self, index):
         self.selected_zone_number = index + 1
+        if self.selected_zone_number == 1:
+            self.selected_zone_number = 2
+        elif self.selected_zone_number == 8:
+            self.selected_zone_number = 7
+        else:
+            self.selected_zone_number = self.selected_zone_number
         self.load_latest_merge_csv_and_display(self.path_input.text().strip(), self.selected_zone_number)
 
     def try_connect(self):
@@ -358,6 +366,12 @@ class SettingsPage(QWidget):
             return None
 
     def load_latest_merge_csv_and_display(self, base_dir: str, zone_number: int = 1):
+        if zone_number == 1:
+            zone_number = 2
+        elif zone_number == 8:
+            zone_number = 7
+        else:
+            zone_number = zone_number
         try:
             search_pattern = os.path.join(base_dir, "**", "*MERGE*.csv")
             matched_files = glob.glob(search_pattern, recursive=True)

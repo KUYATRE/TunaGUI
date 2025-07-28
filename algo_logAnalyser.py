@@ -77,6 +77,21 @@ def ensure_regressionlog_dir():
     return regressionlog_dir
 
 """
+LearnDataLog 폴더 datasets 폴더 내에서 탐색 및 생성
+"""
+def ensure_learndatalog_dir():
+    dataset_dir = ensure_dataset_dir()
+    learndatalog_dir = os.path.join(dataset_dir, 'LearnDataLog')
+
+    if not os.path.exists(learndatalog_dir):
+        os.makedirs(learndatalog_dir)
+        print(f"Created LearnDataLog directory: {learndatalog_dir}")
+    else:
+        print(f"LearnDataLog directory already exists: {learndatalog_dir}")
+
+    return learndatalog_dir
+
+"""
 TuningLog 폴더 내에 T{숫자} 폴더 탐색 및 생성
 """
 def ensure_tuning_subdir(log_filename: str):
@@ -99,7 +114,7 @@ def ensure_tuning_subdir(log_filename: str):
 RegressionLog 폴더 내에 T{숫자} 폴더 탐색 및 생성
 """
 def ensure_regression_subdir(log_filename: str):
-    regressionlog_dir = ensure_regressionlog_dir()
+    regressionlog_dir = ensure_learndatalog_dir()
 
     # T폴더명 추출 (파일명 가장 앞의 'T숫자' 형식)
     base_name = os.path.basename(log_filename)
@@ -110,6 +125,25 @@ def ensure_regression_subdir(log_filename: str):
         raise ValueError(f"There's no accurate tube id in log file name: {log_filename}")
 
     t_folder_path = os.path.join(regressionlog_dir, t_folder_name)
+    os.makedirs(t_folder_path, exist_ok=True)
+
+    return t_folder_path
+
+"""
+LearnDataLog 폴더 내에 T{숫자} 폴더 탐색 및 생성
+"""
+def ensure_learndata_subdir(log_filename: str):
+    learndatalog_dir = ensure_learndatalog_dir()
+
+    # T폴더명 추출 (파일명 가장 앞의 'T숫자' 형식)
+    base_name = os.path.basename(log_filename)
+    t_folder_name = base_name.split('_')[0]
+
+    # 예외 처리: 'T숫자' 형식이 아닌 경우
+    if not t_folder_name.startswith('T') or not t_folder_name[1:].isdigit():
+        raise ValueError(f"There's no accurate tube id in log file name: {log_filename}")
+
+    t_folder_path = os.path.join(learndatalog_dir, t_folder_name)
     os.makedirs(t_folder_path, exist_ok=True)
 
     return t_folder_path
