@@ -180,7 +180,7 @@ class DataProcessor:
             return self.append_to_merge_csv(merged_df, tube_id, job_id)
 
         except Exception as e:
-            print(f"병합 실패: {e}")
+            print(f"CSV Merge fail: {e}")
             return pd.DataFrame()
 
     def append_to_merge_csv(self, new_merged_df: pd.DataFrame, tube_id: str, job_id: str) -> pd.DataFrame:
