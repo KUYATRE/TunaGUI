@@ -1,11 +1,9 @@
-# TunaGUI Main Entry (통합된 GUI를 메뉴바 구조로 관리)
-# 페이지별 GUI 클래스는 ui_tuning.py, ui_dashboard.py 로 분리됨
-
+# main_window.py
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QPushButton, QFrame, QStackedWidget, QWidget
 
 # 외부 페이지 클래스 import
-from ui_tuning import TuningPage
-from ui_dashboard import SettingsPage
+from ui.tuning import TuningPage
+from ui.dashboard import DashboardPage
 
 class TunaAnalyzer(QWidget):
     def __init__(self):
@@ -42,7 +40,7 @@ class TunaAnalyzer(QWidget):
 
         # === 페이지 관리 ===
         self.page_tunner = TuningPage()
-        self.page_settings = SettingsPage()
+        self.page_settings = DashboardPage()
 
         self.stacked_widget = QStackedWidget()
         self.stacked_widget.addWidget(self.page_tunner)     # index 0
@@ -65,7 +63,3 @@ class TunaAnalyzer(QWidget):
 
     def toggle_sidebar(self):
         self.sidebar.setVisible(not self.sidebar.isVisible())
-
-# 실행 엔트리 포인트
-# 실행 엔트리 포인트는 main.py로 이동되었습니다.
-# 이 파일은 TunaAnalyzer 클래스 정의만 포함합니다.

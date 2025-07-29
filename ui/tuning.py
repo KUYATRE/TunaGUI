@@ -1,4 +1,4 @@
-# ui_tuning.py
+# tuning.py - 리팩터링: 분리된 유틸 모듈 사용
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog,
@@ -8,9 +8,15 @@ from PySide6.QtGui import QColor, QFont
 from PySide6.QtCore import Qt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from algo_logAnalyser import get_file, detect_heater_zones, consol_controller, extract_all_zones_all_series_limited, \
-    save_tuning_parameter_rows, get_any_data_from_column
 import os
+
+from services.log_analyzer import (
+    get_file,
+    get_any_data_from_column,
+    save_tuning_parameter_rows
+)
+from utils.heater_analysis import consol_controller
+from utils.plot_utils import extract_all_zones_all_series_limited, detect_heater_zones
 
 class TuningPage(QWidget):
     def __init__(self):

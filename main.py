@@ -2,8 +2,7 @@
 
 import sys
 from PySide6.QtWidgets import QApplication
-from ui_main_window import TunaAnalyzer
-from ui_components import set_dark_palette
+from ui.main_window import TunaAnalyzer
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

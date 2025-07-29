@@ -3,14 +3,13 @@ from PySide6.QtWidgets import (
     QGroupBox, QFrame, QTableWidget, QTableWidgetItem, QComboBox, QScrollArea
 )
 from PySide6.QtCore import Qt, QTimer, QThreadPool, QSettings
-from algo_fins_comm import FinsUDPClient
-from algo_fins_checkconnection import CheckConnectionWorker
-from algo_prcess_data_refiner import DataProcessor
-from algo_scikit_learn import regressor
-from algo_logAnalyser import ensure_dataset_dir
+from services.fins_comm import FinsUDPClient
+from services.heartbeat_monitor import CheckConnectionWorker
+from services.data_processor import DataProcessor
+from utils.ml_model import run_dual_regression
+from services.log_analyzer import ensure_dataset_dir
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import os
@@ -373,15 +372,17 @@ class SettingsPage(QWidget):
         else:
             zone_number = zone_number
         try:
-            search_pattern = os.path.join(base_dir, "**", "*MERGE*.csv")
+            search_pattern = os.path.join(base_dir, "LearnDataLog", "T*", "*MERGE*.csv")
+            print(f"Base directory: {base_dir}")
             matched_files = glob.glob(search_pattern, recursive=True)
+            print(f"Pattern searching...: {search_pattern}")
 
             if not matched_files:
-                print("MERGE 파일을 찾을 수 없습니다.")
+                print("MERGE file search fail: No file named [*MERGE*.csv]")
                 return
 
             latest_file = max(matched_files, key=os.path.getmtime)
-            print(f"최신 MERGE 파일 경로: {latest_file}")
+            print(f"Latest MERGE file directory: {latest_file}")
 
             df = pd.read_csv(latest_file)
             df.columns = [col.strip() for col in df.columns]
@@ -394,7 +395,7 @@ class SettingsPage(QWidget):
             filtered_df = df[filtered_cols]
             self.display_dataframe(filtered_df)
 
-            X1, y1, X2, y2, intercept_time, coef_time, intercept_temp, coef_temp = regressor(filtered_df, zone_number)
+            X1, y1, X2, y2, intercept_time, coef_time, intercept_temp, coef_temp = run_dual_regression(filtered_df, zone_number)
             self.theta_plot_canvas.plot_text(
                 "Step Time", intercept_time, coef_time,
                 "SetPoint", intercept_temp, coef_temp
@@ -403,7 +404,7 @@ class SettingsPage(QWidget):
                                                              coef_temp)
 
         except Exception as e:
-            print(f"MERGE CSV 불러오기 오류: {e}")
+            print(f"MERGE CSV import fail: {e}")
 
     def display_dataframe(self, df: pd.DataFrame):
         if not hasattr(self, 'table_widget'):
