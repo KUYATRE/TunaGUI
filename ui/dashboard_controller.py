@@ -1,12 +1,10 @@
 from pathlib import Path
 import pandas as pd
-from services.data_processor import DataProcessor
-from services.trigger_monitor import TriggerMonitor
-from utils.ml_model import run_dual_regression
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QTableWidgetItem
 from utils.theta_analyzer import ThetaAnalyzer
 from utils.theta_plot_canvas import ThetaPlotCanvas
 from utils.heater_regressor import HeaterRegressor
+from services.data_processor import DataProcessor
 import logging
 
 logger = logging.getLogger(__name__)
@@ -24,8 +22,10 @@ class DashboardController:
         self.theta_table = theta_table
         self.theta_analyzer = theta_analyzer
         self.canvas = ThetaPlotCanvas(parent=parent)
-        self.trigger_monitor = None
 
+        self.processor = DataProcessor('0')
+
+        self.trigger_monitor = None
         self.last_tube_id = None
         self.last_job_id = None
 
@@ -42,9 +42,18 @@ class DashboardController:
                 self.table_widget.setItem(row, col, item)
 
     def run_regression_and_plot(self, df: pd.DataFrame, zone: int):
-        reg = HeaterRegressor()
-        self.canvas.clear_plot()
-        reg.run_and_plot(df, zone, canvas=self.canvas)
+        try:
+            reg = HeaterRegressor()
+            self.canvas.clear_plot()
+            reg.run_and_plot(df, zone, canvas=self.canvas)
+        except ValueError as ve:
+            logger.warning(f"Regression skipped for zone {zone}: {ve}")
+            self.canvas.clear_plot()
+            self.canvas.set_message(f"Zone {zone}: Not enough data for regression")
+        except Exception as e:
+            logger.error(f"Unexpected error during regression for zone {zone}: {e}", exc_info=True)
+            self.canvas.clear_plot()
+            self.canvas.set_message(f"Zone {zone}: 분석 중 오류 발생.")
 
     def load_latest_merge_csv(self, base_dir: str, zone_number: int):
         base_path = Path(base_dir)
@@ -60,17 +69,6 @@ class DashboardController:
 
         return df, zone_number
 
-    def start_trigger_monitoring(self, fins_client):
-        self.trigger_monitor = TriggerMonitor(
-            fins_client=fins_client,
-        )
-        self.trigger_monitor.start()
-
-    def update_plot(self, df, zone):
-        X1, y1, model1, X2, y2, model2 = run_dual_regression(df, zone)
-        self.canvas.plot_model_result(X1, y1, model1, label="Model1: StepTime")
-        self.canvas.plot_model_result(X2, y2, model2, label="Model2: SP")
-
     def plot_theta_table(self, theta_df: pd.DataFrame):
         self.theta_table.setRowCount(len(theta_df))
         self.theta_table.setColumnCount(len(theta_df.columns))
@@ -82,19 +80,11 @@ class DashboardController:
                 item = QTableWidgetItem(f"{val:.3f}" if isinstance(val, (int, float)) else str(val))
                 self.theta_table.setItem(row, col, item)
 
-    def load_and_analyze(self, filepath: str, zone: int):
-        df = DataProcessor.load_merged_csv(path=filepath)
-        self.analyzer.analyze_from_dataframe(df, zone)
-
-    def plot_zone_model(self, df, zone):
-        reg = HeaterRegressor()
-        reg.run_and_plot(df, zone, canvas=self.canvas)
-
     def run_all_zone_analysis(self, base_dir: str, selected_zone: int):
-        logger.info("Running full zone analysis from trigger")
+        logger.debug("=======run_all_zone_analysis: start=======")
         all_theta_rows = []
 
-        for zone in range(2, 8):
+        for zone in range(1, 9):
             df, _ = self.load_latest_merge_csv(base_dir, zone)
             if df is None:
                 continue
@@ -108,9 +98,21 @@ class DashboardController:
 
             self.analyzer.analyze_from_dataframe(df, zone)
             theta_df = self.analyzer.summarize_all()
+            logger.debug(f"[ZONE {zone}] theta_df: {theta_df}")
+
             if not theta_df.empty:
                 all_theta_rows.append(theta_df.iloc[-1])
+
+            self.last_tube_id = df['RS_Tube ID'].iloc[0]
+            logger.debug(f"Tube ID: {self.last_tube_id}")
 
         if all_theta_rows:
             final_theta_df = pd.DataFrame(all_theta_rows)
             self.plot_theta_table(final_theta_df)
+
+        if not theta_df.empty:
+            return theta_df, self.last_tube_id
+        else:
+            logger.warning("Theta dataframe is empty: return NONE")
+            return None
+

@@ -36,7 +36,7 @@ def run_dual_regression(
         target_zone = zone
 
     rs_zone_cols = df.columns[df.columns.str.contains(f'RS_ZONE{target_zone}', case=False)]
-    step_time_cols = df.columns[df.columns.str.contains('DRIN_Step Time', case=False)]
+    step_time_cols = df.columns[df.columns.str.contains('DRIN_Time', case=False)]
     zone_sp_cols = df.columns[df.columns.str.contains(fr'ZONE{target_zone}\(SP\)', case=False)]
 
     logger.debug(f"RS_ZONE columns: {rs_zone_cols.tolist()}")
@@ -53,6 +53,11 @@ def run_dual_regression(
 
     logger.debug(f"X1 shape: {X1.shape}, y1 shape: {y1.shape}")
     logger.debug(f"X2 shape: {X2.shape}, y2 shape: {y2.shape}")
+
+    if X1.empty or y1.empty or len(X1) < 10:
+        raise ValueError(f"Not enough data to perform regression for model1 in zone {zone} (X1: {len(X1)}, y1: {len(y1)})")
+    if X2.empty or y2.empty or len(X2) < 10:
+        raise ValueError(f"Not enough data to perform regression for model2 in zone {zone} (X2: {len(X2)}, y2: {len(y2)})")
 
     X1_train, X1_test, y1_train, y1_test = train_test_split(X1, y1, test_size=0.2, random_state=5)
     model1 = LinearRegression().fit(X1_train, y1_train)
@@ -71,3 +76,53 @@ def run_dual_regression(
     logger.info("[MODEL2] RMSE: %.4f", np.sqrt(mean_squared_error(y2_test, y2_pred)))
 
     return X1, y1, model1, X2, y2, model2
+
+def run_regression(
+    df: pd.DataFrame,
+    zone: int
+) -> Tuple[pd.DataFrame, pd.DataFrame, LinearRegression, mean_squared_error]:
+    logger.debug(f"=======run_regression: Start=======")
+
+    mapping = {
+        'ZONE1': ['RS_SubBoat1', 'RS_SubBoat2'],
+        'ZONE2': ['RS_SubBoat1', 'RS_SubBoat2', 'RS_SubBoat3', 'RS_SubBoat4'],
+        'ZONE3': ['RS_SubBoat1', 'RS_SubBoat2', 'RS_SubBoat3', 'RS_SubBoat4', 'RS_SubBoat5'],
+        'ZONE4': ['RS_SubBoat3', 'RS_SubBoat4', 'RS_SubBoat5', 'RS_SubBoat6', 'RS_SubBoat7'],
+        'ZONE5': ['RS_SubBoat5', 'RS_SubBoat6', 'RS_SubBoat7', 'RS_SubBoat8', 'RS_SubBoat9'],
+        'ZONE6': ['RS_SubBoat7', 'RS_SubBoat8', 'RS_SubBoat9', 'RS_SubBoat10', 'RS_SubBoat11'],
+        'ZONE7': ['RS_SubBoat8', 'RS_SubBoat9', 'RS_SubBoat10', 'RS_SubBoat11'],
+        'ZONE8': ['RS_SubBoat10', 'RS_SubBoat11'],
+    }
+
+    key = f"ZONE{zone}"
+    logger.debug(f"ZONE{zone} selected")
+
+    if key not in mapping:
+        raise ValueError(f"ZONE {zone} not found in mapping")
+
+    selected_cols: List[str] = mapping[key]
+    rs_subboat_cols = [col for col in selected_cols if col in df.columns]
+    drin_sp_cols = df.columns[df.columns.str.contains(f'DRIN_{key}', case=False)]
+
+    X = df[rs_subboat_cols]
+    y = df[drin_sp_cols]
+    logger.debug(f"SubBoat Rsheet dataframe: {X.shape}")
+    logger.debug(f"SubBoat Rsheet columns: {rs_subboat_cols}")
+    logger.debug(f"Heater zone dataframe: {y.shape}")
+    logger.debug(f"Heater zone columns: {drin_sp_cols}")
+
+    if X.empty or y.empty or len(X) < 10:
+        raise ValueError(
+            f"Not enough data to perform regression for model1 in zone {zone} (X1: {len(X)}, y1: {len(y)})")
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=5)
+    model = LinearRegression().fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    mse = mean_squared_error(y_test, y_pred)
+    rmse = mse ** 0.5
+
+    logger.info(f"[MODEL{zone}] Intercept: %s", model.intercept_)
+    logger.info(f"[MODEL{zone}] Coefficients: %s", model.coef_)
+    logger.info(f"[MODEL{zone}] RMSE: %.4f", rmse)
+
+    return X, y, model, rmse

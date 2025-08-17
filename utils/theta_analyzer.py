@@ -1,35 +1,34 @@
 import pandas as pd
 import logging
-from utils.ml_model import run_dual_regression
+from utils.ml_model import run_regression
 
 logger = logging.getLogger(__name__)
 
 class ThetaAnalyzer:
     def __init__(self):
         self.reset_table()
+        self.tube_id = 0
 
     def reset_table(self):
-        self.theta_table = pd.DataFrame(columns=["Zone", "intercept1", "coefficient1", "intercept2", "coefficient2"])
+        self.theta_table = pd.DataFrame(columns=["Zone", "Intercept", "coefficient1", "coefficient2", "coefficient3", "coefficient4", "coefficient5", "RMSE"])
 
-    def add_result(self, zone_number, X1, model1, X2, model2):
+    def add_result(self, zone_number, model, rmse):
         logger.debug(f"Adding regression result for ZONE{zone_number}")
 
-        def extract(model, X):
+        def extract(model):
             intercept = model.intercept_[0] if hasattr(model.intercept_, '__iter__') else model.intercept_
             coefs = model.coef_[0] if hasattr(model.coef_, '__iter__') else model.coef_
-            coef_dict = dict(zip(X.columns, coefs))
-            return intercept, coef_dict
+            return intercept, coefs
 
-        intercept1, coefs1 = extract(model1, X1)
-        intercept2, coefs2 = extract(model2, X2)
-
+        intercept, coef_values = extract(model)
         row = {
             "Zone": f"ZONE{zone_number}",
-            "intercept1": intercept1,
-            "coefficient1": list(coefs1.values())[0] if coefs1 else None,
-            "intercept2": intercept2,
-            "coefficient2": list(coefs2.values())[0] if coefs2 else None,
+            "Intercept": intercept
         }
+        for i in range(min(5, len(coef_values))):
+            row[f"coefficient{i+1}"] = coef_values[i]
+
+        row["RMSE"] = rmse
 
         self.theta_table = pd.concat([self.theta_table, pd.DataFrame([row])], ignore_index=True)
 
@@ -44,8 +43,8 @@ class ThetaAnalyzer:
     def analyze_from_dataframe(self, df: pd.DataFrame, zone: int):
         try:
             logger.debug(f"Analyzing zone {zone} from dataframe with shape: {df.shape}")
-            X1, y1, model1, X2, y2, model2 = run_dual_regression(df, zone)
-            self.add_result(zone, X1, model1, X2, model2)
+            X, y, model, rmse = run_regression(df, zone)
+            self.add_result(zone, model, rmse)
         except Exception as e:
             logger.exception(f"Exception during analyzing zone {zone}: {e}")
 

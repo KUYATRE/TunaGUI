@@ -19,13 +19,20 @@ LAMP_COLOR = {
     'error': "background-color: red; border-radius: 15px;"
 }
 
-logger = logging.getLogger(__name__)
+# 기존 logger 설정 개선
+logger = logging.getLogger("heartbeat_logger")  # 고유 이름 지정
 logger.setLevel(logging.DEBUG)
+
+# 핸들러가 없을 경우만 추가 (중복 방지)
 if not logger.hasHandlers():
     handler = logging.StreamHandler()
+    handler.setLevel(logging.DEBUG)  # 핸들러에도 level 명시
     formatter = logging.Formatter('[%(levelname)s] %(asctime)s - %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+
+# 아래와 같이 DEBUG 로그 출력 테스트
+logger.debug("디버그 로그 출력 확인용")
 
 class DashboardPage(QWidget):
     def __init__(self):
@@ -37,13 +44,14 @@ class DashboardPage(QWidget):
 
         self.processor = DataProcessor(self.base_dir)
 
-        self.selected_zone_number = 2
+        self.selected_zone_number = 1
 
         self.controller = None
+        self.theta_df = []
         self.theta_analyzer = ThetaAnalyzer()
         self.init_ui()
-        self.setup_heartbeat_monitor()
-        self.setup_trigger_monitor()
+        self.is_reconnecting = self.setup_heartbeat_monitor()
+        self.setup_trigger_monitor(self.is_reconnecting)
 
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -61,7 +69,7 @@ class DashboardPage(QWidget):
         self.ip_input.setText("172.22.80.1")
 
         self.zone_selector = QComboBox()
-        self.zone_selector.addItems([f"ZONE {i}" for i in range(2, 8)])
+        self.zone_selector.addItems([f"ZONE {i}" for i in range(1, 9)])
         self.zone_selector.currentIndexChanged.connect(self.update_selected_zone)
 
         self.path_input = QLineEdit()
@@ -88,8 +96,8 @@ class DashboardPage(QWidget):
         layout.addWidget(self.theta_table)
         layout.addWidget(QLabel("데이터 테이블"))
         layout.addWidget(self.table_widget)
-        layout.addWidget(QLabel("데이터 시각화"))
-        layout.addWidget(self.controller.canvas)
+        # layout.addWidget(QLabel("데이터 시각화"))
+        # layout.addWidget(self.controller.canvas)
         layout.addWidget(QLabel("데이터 경로"))
         layout.addWidget(self.path_input)
 
@@ -116,6 +124,10 @@ class DashboardPage(QWidget):
         self.heartbeat_monitor.error_occurred.connect(self.on_heartbeat_error)
         self.heartbeat_monitor.start()
 
+        logger.debug(f"Heartbeat reconnection: reconnecting({self.heartbeat_monitor.is_reconnecting})")
+
+        return self.heartbeat_monitor.is_reconnecting
+
     def on_heartbeat_update(self, bit_value, is_changed):
         logger.debug(f"Heartbeat update - bit: {bit_value}, changed: {is_changed}")
         self.heartbeat_lamp.setStyleSheet(
@@ -126,7 +138,7 @@ class DashboardPage(QWidget):
         logger.error(f"Heartbeat error: {msg}")
         self.heartbeat_lamp.setStyleSheet(LAMP_COLOR['error'])
 
-    def setup_trigger_monitor(self):
+    def setup_trigger_monitor(self, is_reconnecting):
         if self.fins is None:
             plc_ip = self.ip_input.text()
             self.fins = FinsUDPClient(plc_ip)
@@ -135,12 +147,15 @@ class DashboardPage(QWidget):
 
         self.trigger_monitor = TriggerMonitor(
             fins_client=self.fins,
+            is_reconnecting=is_reconnecting,
             interval_ms=500
         )
         self.trigger_monitor.data_received.connect(self.on_trigger_data_received)
         self.trigger_monitor.error_occurred.connect(self.on_trigger_error)
-        self.controller.run_all_zone_analysis(self.base_dir, self.selected_zone_number)
+        self.theta_df, tube_id = self.controller.run_all_zone_analysis(self.base_dir, self.selected_zone_number)
         self.trigger_monitor.start()
+
+        self.processor.save_regression_data(tube_id, self.theta_df)
 
     def on_trigger_error(self, msg):
         logger.error(f"Trigger detect error: {msg}")

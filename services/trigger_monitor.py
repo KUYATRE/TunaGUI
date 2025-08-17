@@ -1,14 +1,12 @@
-# Updated TriggerMonitor class
 from PySide6.QtCore import QObject, QTimer, Signal
 from services.fins_comm import FinsUDPClient
 from services.data_processor import DataProcessor
-
 
 class TriggerMonitor(QObject):
     data_received = Signal(int, int)  # tube_id, job_id
     error_occurred = Signal(str)
 
-    def __init__(self, fins_client: FinsUDPClient, interval_ms=2000):
+    def __init__(self, fins_client: FinsUDPClient, is_reconnecting, interval_ms=2000):
         super().__init__()
         self.fins = fins_client
         self.timer = QTimer(self)
@@ -22,6 +20,11 @@ class TriggerMonitor(QObject):
         self.bit_offset = 3
         self.prev_state = 0
 
+        self.tube_id = 0
+        self.job_id = 0
+
+        self.is_reconnecting = is_reconnecting
+
     def start(self):
         self.enabled = True
         self.timer.start()
@@ -31,6 +34,10 @@ class TriggerMonitor(QObject):
         self.timer.stop()
 
     def check_trigger(self):
+        if self.is_reconnecting:
+            print(f"reconnecting: {self.is_reconnecting}")
+            return
+
         try:
             bit = self.fins.read_word_bit(
                 mem_area=self.mem_area,
@@ -51,10 +58,10 @@ class TriggerMonitor(QObject):
                 process_data = processor.extract_drivein_mean()
                 print(f"Process data refined: {process_data}")
 
-                sheet_res_data = processor.data_receive_plc(fins_client=self.fins)
-                print(f"Data received: Tube ID: {sheet_res_data[0]}, Job ID: {sheet_res_data[1]}")
+                self.tube_id, self.job_id, sheet_res_data = processor.data_receive_plc(fins_client=self.fins)
+                print(f"Data received: Tube ID: {self.tube_id}, Job ID: {self.job_id}")
 
-                self.data_received.emit(sheet_res_data[0], sheet_res_data[1])
+                self.data_received.emit(self.tube_id, self.job_id)
 
                 rsheet_data = processor.save_sheet_resistance(sheet_res_data)
                 print(f"Rsheet data refined: {rsheet_data}")

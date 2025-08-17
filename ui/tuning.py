@@ -1,5 +1,4 @@
-# tuning.py - 리팩터링: 분리된 유틸 모듈 사용
-
+import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFileDialog,
     QGroupBox, QComboBox, QFormLayout, QTableWidget, QTableWidgetItem, QSizePolicy
@@ -18,6 +17,10 @@ from services.log_analyzer import (
 from utils.heater_analysis import consol_controller
 from utils.plot_utils import extract_all_zones_all_series_limited, detect_heater_zones
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+
 class TuningPage(QWidget):
     def __init__(self):
         super().__init__()
@@ -35,7 +38,7 @@ class TuningPage(QWidget):
 
         # === 파일 업로드 ===
         file_layout = QHBoxLayout()
-        self.upload_btn = QPushButton("📁")
+        self.upload_btn = QPushButton("\U0001F4C1")
         self.upload_btn.setFixedSize(40, 40)
         self.upload_btn.setStyleSheet("background-color: #5e35b1; color: white; font-size: 20px")
         self.upload_btn.clicked.connect(self.load_csv)
@@ -55,7 +58,7 @@ class TuningPage(QWidget):
 
         # === 설정 필드 ===
         settings_layout = QHBoxLayout()
-        gear_label = QLabel("⚙️")
+        gear_label = QLabel("\u2699\ufe0f")
         gear_label.setFixedSize(40, 40)
         gear_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         gear_label.setStyleSheet("background-color: #5e35b1; color: white; font-size: 20px")
@@ -111,26 +114,30 @@ class TuningPage(QWidget):
             self.file_label.setStyleSheet("color: #00cc00; font-style: italic; font-weight: bold;")
 
             self.selected_log_filename = os.path.basename(file_path)
-            print(f"File selected: {self.selected_log_filename}")
+            logger.info(f"CSV 파일 로드 완료: {self.selected_log_filename}")
         return file_path
 
     def run_analysis(self):
         if not self.data_rows:
             self.result_label.setText("CSV 파일을 먼저 업로드하세요.")
+            logger.warning("분석 실행 실패: CSV 파일 없음")
             return
 
+        logger.info("튜닝 분석 시작")
         zone_count = detect_heater_zones(self.data_rows[0])
         headers = ["구분"] + [f"Zone{i + 1}" for i in range(zone_count)] + ["비고"]
 
         p1, initial_p2, p2, recipe_step = consol_controller(
             self.selected_temp_mode, self.selected_etype, self.data_rows)
+
         self.zone_data = extract_all_zones_all_series_limited(self.data_rows, recipe_step)
         self.tube_id = get_any_data_from_column(self.data_rows, 'Tube ID')
-        print(f"Tube ID: {self.tube_id}")
         self.job_id = get_any_data_from_column(self.data_rows, 'JobNo')
-        print(f"Job No: {self.job_id}")
+
+        logger.debug(f"Tube ID: {self.tube_id}, Job No: {self.job_id}")
+
         save_tuning_parameter_rows(self.selected_log_filename, self.tube_id, self.job_id, p1, initial_p2, p2)
-        print(f"log file save completed")
+        logger.info("튜닝 결과 저장 완료")
 
         self.result_label.setText("분석 완료! (Zone 헤더 클릭으로 그래프 확인 가능)")
 
@@ -166,6 +173,7 @@ class TuningPage(QWidget):
                 self.table.setItem(row_idx, col_idx, item)
 
         self.table.resizeColumnsToContents()
+        logger.info("테이블 결과 렌더링 완료")
 
     def handle_header_click(self, index):
         zone_name = self.table.horizontalHeaderItem(index).text()
@@ -174,7 +182,7 @@ class TuningPage(QWidget):
 
     def plot_zone(self, zone_key):
         if zone_key not in self.zone_data:
-            print("존 없음:", zone_key)
+            logger.warning(f"존 데이터 없음: {zone_key}")
             return
 
         x, sp, spike, profile = self.zone_data[zone_key]
@@ -185,8 +193,9 @@ class TuningPage(QWidget):
         ax.plot(x, profile, label="Profile")
         ax.set_title(zone_key, color="white")
         ax.set_xlabel("Time", color="white")
-        ax.set_ylabel("Temp (°C)", color="white")
+        ax.set_ylabel("Temp (\u00b0C)", color="white")
         ax.tick_params(colors="white")
         ax.grid(True, color="gray")
         ax.legend()
         self.canvas.draw()
+        logger.debug(f"그래프 표시 완료: {zone_key}")

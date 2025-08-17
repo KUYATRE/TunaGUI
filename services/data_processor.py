@@ -4,8 +4,9 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from typing import Optional
-from services.log_analyzer import ensure_dataset_dir, ensure_learndata_subdir
+from services.log_analyzer import ensure_dataset_dir, ensure_learndata_subdir, ensure_regression_subdir
 from services.fins_comm import FinsUDPClient
+from utils.fins_data_receiver import FinsDataReceiver
 import logging
 
 logger = logging.getLogger(__name__)
@@ -39,23 +40,25 @@ class DataProcessor:
         return self.dataframe
 
     def extract_drivein_mean(self) -> pd.DataFrame:
+        logger.debug(f"=======_extract_drivein_mean: Start=======")
+
         df = self.load_csv()
 
         if df is None:
-            raise ValueError("DataFrame이 비어있음")
+            raise ValueError("DataFrame is empty")
 
         df = df[df['Step Name'] == 'Drive in']
-        logger.debug(f"Drive in 필터 후 row 수: {len(df)}")
+        logger.debug(f"Drive in filtered row length: {len(df)}")
 
         if df.empty:
-            raise ValueError("Drive in 단계가 존재하지 않음")
+            raise ValueError("Drive in step deosn't exist")
 
-        # 열 필터링: ZONE2~ZONE7 (SP) 만 추출
+        # 열 필터링: ZONE1~ZONE8 (SP) 추출
         import re
-        zone_sp_pattern = re.compile(r"ZONE[2-7]\(SP\)")
+        zone_sp_pattern = re.compile(r"ZONE[1-8]\(SP\)")
         numeric_cols = [col for col in df.columns if
                         zone_sp_pattern.fullmatch(col) and pd.api.types.is_numeric_dtype(df[col])]
-        logger.debug(f"선택된 ZONE(SP) 열: {numeric_cols}")
+        logger.debug(f"Selected ZONE(SP) columns: {numeric_cols}")
 
         # 평균 계산
         mean_vals = df[numeric_cols].mean(numeric_only=True).to_dict()
@@ -79,40 +82,35 @@ class DataProcessor:
 
     def data_receive_plc(self, fins_client: FinsUDPClient):
         logger.debug("PLC로부터 면저항 데이터 수신 요청")
-        sheet_res_data = fins_client.read_word(
-            mem_area=0xA2,
-            word_addr=0,
-            word_count=99
-        )
+        res_data_receiver = FinsDataReceiver(fins_client.plc_ip, fins_client.plc_port, fins_client.plc_node, fins_client.pc_node)
+        tube_id, job_id, sheet_res_data = res_data_receiver.receive_all()
         logger.info("PLC 데이터 수신 완료")
         logger.debug(sheet_res_data)
-        return sheet_res_data
+        return tube_id, job_id, sheet_res_data
 
     def save_sheet_resistance(self, sheet_data: list) -> pd.DataFrame:
-        logger.debug("면저항 데이터 저장 시작")
+        logger.debug("=======_save_sheet_resistance: Start=======")
         if len(sheet_data) != 99:
-            logger.error("면저항 데이터 길이 오류 (99 아님)")
-            raise ValueError("면저항 데이터 길이 오류 (99 아님)")
+            logger.error("Rsheet data length error (Not 99)")
+            raise ValueError("Rsheet data length error (Not 99)")
 
+        # 99개 데이터를 9개씩 끊어서 11개의 SubBoat로 구성
         matrix = [sheet_data[i:i + 9] for i in range(0, 99, 9)]
         df = pd.DataFrame({f'SubBoat{i + 1}': matrix[i] for i in range(11)})
+        logger.debug(f"SubBoat Rsheet dataframe: \n{df}")
 
-        mapping = {
-            'ZONE2': ['SubBoat1', 'SubBoat2'],
-            'ZONE3': ['SubBoat3', 'SubBoat4'],
-            'ZONE4': ['SubBoat5', 'SubBoat6'],
-            'ZONE5': ['SubBoat7'],
-            'ZONE6': ['SubBoat8', 'SubBoat9'],
-            'ZONE7': ['SubBoat10', 'SubBoat11']
-        }
+        # 각 SubBoat 평균 계산
+        mean_series = df.mean(numeric_only=True)
+        logger.debug(f"SubBoat Rsheet mean series1: \n{mean_series}")
+        mean_series['Tube ID'] = self.tube_id
+        mean_series['JobNo'] = self.job_id
+        logger.debug(f"SubBoat Rsheet mean series2: \n{mean_series}")
 
-        zone_avg = {zone: df[subs].mean().mean() for zone, subs in mapping.items()}
-        zone_avg.update({'Tube ID': self.tube_id, 'JobNo': self.job_id})
-
-        out_df = pd.DataFrame([zone_avg])[['Tube ID', 'JobNo'] + list(mapping.keys())]
+        out_df = pd.DataFrame([mean_series])[['Tube ID', 'JobNo'] + [f'SubBoat{i + 1}' for i in range(11)]]
+        logger.debug(f"SubBoat Rsheet dataframe: {out_df}")
         path = self._output_path(self.tube_id, self.job_id, mode=0)
         out_df.to_csv(path, index=False, encoding='utf-8-sig')
-        logger.info(f"RSHEET 평균값 저장됨: {path}")
+        logger.info(f"Rsheet mean data saved: {path}")
         return out_df
 
     def merge_files(self) -> pd.DataFrame:
@@ -155,36 +153,69 @@ class DataProcessor:
         logger.info(f"MERGE 파일 로드됨: {files[0]}")
         return pd.read_csv(files[0], encoding='utf-8')
 
+    def save_regression_data(self, tube_id, df: pd.DataFrame) -> None:
+        logger.debug("=======_save_regression_data: Start=======")
+        path = self._output_path(tube_id, 0, mode=3)
+        logger.debug(f"Regression file path: {path}")
+
+        if df is None:
+            logger.error("Theta dataframe is none: Save file rejected.")
+            return
+
+        if df.empty:
+            logger.warning("Theta dataframe is empty: Save file rejected.")
+            return
+
+        df.to_csv(path, index=False, encoding='utf-8-sig')
+
     def _append_merge(self, new_df: pd.DataFrame) -> pd.DataFrame:
         tube = f"T{self.tube_id}"
         subdir = ensure_learndata_subdir(tube)
         pattern = os.path.join(subdir, f"{tube}_MERGE_*.csv")
+        logger.debug(f"{tube}_MERGE_*.csv 파일 검색됨.")
+        logger.debug(f"파일 경로: {pattern}")
         old_files = glob.glob(pattern)
+        logger.debug(f"{old_files} = glob.glob({pattern})")
 
         if old_files:
             latest = max(old_files, key=os.path.getmtime)
             old_df = pd.read_csv(latest)
-            combined = pd.concat([old_df, new_df]).drop_duplicates(subset=["RS_Tube ID", "RS_JobNo"], keep='last')
-            logger.debug(f"기존 MERGE 파일 병합: {latest}")
+
+            # 병합
+            combined = pd.concat([old_df, new_df])
+            combined = combined.drop_duplicates(subset=["RS_Tube ID", "RS_JobNo"], keep='last')
+
+            # 기존 MERGE 파일 위에 덮어쓰기
+            path = latest
+            logger.debug(f"기존 MERGE 파일 병합 및 덮어쓰기: {latest}")
         else:
             combined = new_df
-            logger.debug(f"신규 MERGE 파일 생성")
+            path = self._output_path(self.tube_id, self.job_id, mode=2)
+            logger.debug(f"신규 MERGE 파일 생성: {path}")
 
-        path = self._output_path(self.tube_id, self.job_id, mode=2)
         combined.to_csv(path, index=False, encoding='utf-8-sig')
         logger.info(f"MERGE 파일 저장됨: {path}")
 
+        # 새로운 파일 외에는 모두 삭제
         for f in old_files:
             if f != path:
                 os.remove(f)
                 logger.debug(f"기존 MERGE 파일 삭제됨: {f}")
+
         return combined
 
     def _output_path(self, tube_id, job_id, mode=0):
         base = ensure_learndata_subdir(f"T{tube_id}")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        suffix = ["RSHEET", "PROC", "MERGE", "NULL"][mode]
-        path = os.path.join(base, f"T{tube_id}_{job_id}_{suffix}_{timestamp}.csv")
+        suffix = ["RSHEET", "PROC", "MERGE", "THETA", "NULL"][mode]
+        if mode != 2 and mode != 3:
+            path = os.path.join(base, f"T{tube_id}_{job_id}_{suffix}_{timestamp}.csv")
+        elif mode == 2:
+            path = os.path.join(base, f"T{tube_id}_{suffix}_{timestamp}.csv")
+        else:
+            base = ensure_regression_subdir(f"T{tube_id}")
+            path = os.path.join(base, f"T{tube_id}_{suffix}_{timestamp}.csv")
+
         logger.debug(f"Output 경로 생성됨: {path}")
         return path
 

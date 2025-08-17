@@ -20,6 +20,12 @@ class ThetaPlotCanvas(FigureCanvas):
         self.ax2.clear()
         self.draw()
 
+    def set_message(self, message: str):
+        self.ax1.clear()
+        self.ax2.clear()
+        self.ax1.text(0.5, 0.5, message, ha='center', va='center', fontsize=12)
+        self.draw()
+
     def plot_model_result(self, X: pd.DataFrame, y: pd.DataFrame, model, label: str = "Model"):
         if X.shape[1] != 1:
             logger.warning(f"[WARNING] Cannot plot: input dimension is {X.shape[1]} (only 1D supported)")
