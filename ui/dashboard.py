@@ -50,56 +50,41 @@ class DashboardPage(QWidget):
         self.theta_df = []
         self.theta_analyzer = ThetaAnalyzer()
         self.init_ui()
-        self.is_reconnecting = self.setup_heartbeat_monitor()
-        self.setup_trigger_monitor(self.is_reconnecting)
+        # 자동 시작 제거
+        self.is_reconnecting = False
 
     def init_ui(self):
         layout = QVBoxLayout(self)
 
+        # 통신 상태 그룹
         self.status_group = QGroupBox("통신 상태")
         status_layout = QHBoxLayout()
+        
+        # 하트비트 램프
         self.heartbeat_lamp = QLabel()
         self.heartbeat_lamp.setFixedSize(30, 30)
         self.heartbeat_lamp.setStyleSheet(LAMP_COLOR['default'])
         status_layout.addWidget(QLabel("Heartbeat"))
         status_layout.addWidget(self.heartbeat_lamp)
+        
+        # 연결/해제 버튼 추가
+        self.connect_btn = QPushButton("연결")
+        self.connect_btn.clicked.connect(self.start_communication)
+        self.disconnect_btn = QPushButton("해제")
+        self.disconnect_btn.clicked.connect(self.stop_communication)
+        self.disconnect_btn.setEnabled(False)
+        
+        status_layout.addWidget(self.connect_btn)
+        status_layout.addWidget(self.disconnect_btn)
         self.status_group.setLayout(status_layout)
 
         self.ip_input = QLineEdit()
         self.ip_input.setText("172.22.80.1")
 
-        self.zone_selector = QComboBox()
-        self.zone_selector.addItems([f"ZONE {i}" for i in range(1, 9)])
-        self.zone_selector.currentIndexChanged.connect(self.update_selected_zone)
-
-        self.path_input = QLineEdit()
-        self.path_input.setText(ensure_dataset_dir())
-
-        self.theta_table = QTableWidget()
-        self.theta_table.setColumnCount(0)
-        self.theta_table.setRowCount(0)
-
-        self.table_widget = QTableWidget()
-
-        self.controller = DashboardController(
-            table_widget=self.table_widget,
-            theta_table=self.theta_table,
-            theta_analyzer=self.theta_analyzer
-        )
-
+        # 나머지 UI 요소들...
         layout.addWidget(self.status_group)
         layout.addWidget(QLabel("PLC IP 주소"))
         layout.addWidget(self.ip_input)
-        layout.addWidget(QLabel("ZONE 선택"))
-        layout.addWidget(self.zone_selector)
-        layout.addWidget(QLabel("Theta 분석 결과"))
-        layout.addWidget(self.theta_table)
-        layout.addWidget(QLabel("데이터 테이블"))
-        layout.addWidget(self.table_widget)
-        # layout.addWidget(QLabel("데이터 시각화"))
-        # layout.addWidget(self.controller.canvas)
-        layout.addWidget(QLabel("데이터 경로"))
-        layout.addWidget(self.path_input)
 
     def update_selected_zone(self, index):
         self.selected_zone_number = index + 2
@@ -182,3 +167,37 @@ class DashboardPage(QWidget):
         base_path = Path(base_dir)
         merge_files = sorted(base_path.rglob("*MERGE*.csv"), key=lambda f: f.stat().st_mtime, reverse=True)
         return str(merge_files[0]) if merge_files else None
+
+    def start_communication(self):
+        """통신 시작"""
+        try:
+            if self.fins is None:
+                plc_ip = self.ip_input.text()
+                self.fins = FinsUDPClient(plc_ip)
+            
+            self.is_reconnecting = self.setup_heartbeat_monitor()
+            self.setup_trigger_monitor(self.is_reconnecting)
+            
+            self.connect_btn.setEnabled(False)
+            self.disconnect_btn.setEnabled(True)
+            self.ip_input.setEnabled(False)
+            logger.info("통신 시작됨")
+        except Exception as e:
+            logger.error(f"통신 시작 실패: {e}")
+            self.on_heartbeat_error(str(e))
+
+    def stop_communication(self):
+        """통신 중지"""
+        try:
+            if self.heartbeat_monitor:
+                self.heartbeat_monitor.stop()
+            if self.trigger_monitor:
+                self.trigger_monitor.stop()
+                
+            self.heartbeat_lamp.setStyleSheet(LAMP_COLOR['default'])
+            self.connect_btn.setEnabled(True)
+            self.disconnect_btn.setEnabled(False)
+            self.ip_input.setEnabled(True)
+            logger.info("통신 중지됨")
+        except Exception as e:
+            logger.error(f"통신 중지 실패: {e}")
