@@ -39,8 +39,8 @@ class TunaAnalyzer(QWidget):
         self.toggle_btn.clicked.connect(self.toggle_sidebar)
 
         # === 페이지 관리 ===
-        self.page_tunner = TuningPage()
         self.page_settings = DashboardPage()
+        self.page_tunner = TuningPage(self.page_settings)
 
         self.stacked_widget = QStackedWidget()
         self.stacked_widget.addWidget(self.page_tunner)     # index 0

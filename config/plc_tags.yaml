@@ -1,0 +1,63 @@
+# PLC 메모리 영역 정의
+memory_areas:
+  E0: 0xA0
+  EE: 0xAE
+  EF: 0xAF
+
+# 태그 정의
+Tube1_tags:
+  Tube1_para_read_Z1:
+    area: "E0"
+    word_addr: 16840
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 1 tuning parameter NP1, NP2, HP1, HP2"
+
+  Tube1_para_read_Z2:
+    area: "E0"
+    word_addr: 16845
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 2 tuning parameter NP1, NP2, HP1, HP2"
+
+  Tube1_para_read_Z3:
+    area: "E0"
+    word_addr: 16850
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 3 tuning parameter NP1, NP2, HP1, HP2"
+
+  Tube1_para_read_Z4:
+    area: "E0"
+    word_addr: 16855
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 4 tuning parameter NP1, NP2, HP1, HP2"
+
+  Tube1_para_read_Z5:
+    area: "E0"
+    word_addr: 16860
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 5 tuning parameter NP1, NP2, HP1, HP2"
+
+  Tube1_para_read_Z6:
+    area: "E0"
+    word_addr: 16865
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 6 tuning parameter NP1, NP2, HP1, HP2"
+
+  Tube1_para_read_Z7:
+    area: "E0"
+    word_addr: 16870
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 7 tuning parameter NP1, NP2, HP1, HP2"
+
+  Tube1_para_read_Z8:
+    area: "E0"
+    word_addr: 16875
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 8 tuning parameter NP1, NP2, HP1, HP2"

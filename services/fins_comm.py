@@ -1,4 +1,15 @@
 import socket
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+if not logger.hasHandlers():
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.INFO)  # 핸들러의 레벨도 INFO로 설정
+    formatter = logging.Formatter('[%(levelname)s] %(asctime)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
 class FinsUDPClient:
     def __init__(self, plc_ip, plc_port=9600, plc_node=1, pc_node=179):
@@ -86,7 +97,9 @@ class FinsUDPClient:
 
         value = int.from_bytes(response[-2:], byteorder='big')
         bit = (value >> bit_offset) & 1
-        print("Read", mem_area, word_addr, bit_offset, "=", bit)
+
+        logger.info(f"Read {mem_area} {word_addr} {bit_offset} = {bit}")
+
         return bit
 
     def write_word_bit(self, mem_area, word_addr, bit_offset, turn_on=True):
@@ -108,7 +121,7 @@ class FinsUDPClient:
         if response[12:14] != b'\x00\x00':
             print("쓰기 실패", response[12:14].hex())
             return False
-        print("Write", mem_area, word_addr, bit_offset, "=", turn_on)
+        logger.info(f"Write {mem_area} {word_addr} {bit_offset} = {turn_on}")
         return True
 
     def write_bit(self, mem_area, word_addr, bit_offset, turn_on=True):

@@ -22,12 +22,16 @@ logger.setLevel(logging.DEBUG)
 
 
 class TuningPage(QWidget):
-    def __init__(self):
+    def __init__(self, dashboard):
         super().__init__()
         self.data_rows = []
         self.zone_data = {}
         self.selected_temp_mode = "normal"
         self.selected_etype = "BCl3"
+        self.tuning_data = None
+        self.dashboard = dashboard
+        self.dashboard.tuning_data_to_page.connect(self.update_tuning_data)
+
         self.init_ui()
         self.selected_log_filename = ""
         self.tube_id = 0
@@ -105,6 +109,57 @@ class TuningPage(QWidget):
         layout.addWidget(self.result_label)
         layout.addWidget(self.table)
         layout.addWidget(self.canvas)
+
+    def update_tuning_data(self, tuning_data):
+        """대시보드로부터 튜닝 데이터 수신"""
+        try:
+            self.tuning_data = tuning_data
+            logger.info(f"튜닝 페이지 데이터 업데이트: {self.tuning_data}")
+
+            if self.tuning_data is not None:
+                # 테이블 데이터 업데이트
+                self.update_table_with_tuning_data()
+
+        except Exception as e:
+            logger.error(f"튜닝 데이터 업데이트 중 오류: {e}")
+
+    def update_table_with_tuning_data(self):
+        """튜닝 데이터로 테이블 업데이트"""
+        if not self.tuning_data:
+            return
+
+        try:
+            headers = ["구분"] + [f"Zone{i}" for i in range(1, 9)] + ["비고"]
+            rows = []
+
+            # NP1, NP2, HP1, HP2 데이터 구성
+            for param in ['NP1', 'NP2', 'HP1', 'HP2']:
+                row = [param]
+                for zone_num in range(1, 9):
+                    zone_key = f'Z{zone_num}'
+                    if zone_key in self.tuning_data and self.tuning_data[zone_key]:
+                        value = self.tuning_data[zone_key].get(param, 0)
+                        row.append(str(value))
+                    else:
+                        row.append("0")
+                row.append("")  # 비고
+                rows.append(row)
+
+            # 테이블 업데이트
+            self.table.setRowCount(len(rows))
+            self.table.setColumnCount(len(headers))
+            self.table.setHorizontalHeaderLabels(headers)
+
+            for row_idx, row_data in enumerate(rows):
+                for col_idx, value in enumerate(row_data):
+                    item = QTableWidgetItem(str(value))
+                    self.table.setItem(row_idx, col_idx, item)
+
+            self.table.resizeColumnsToContents()
+            logger.info("튜닝 테이블 업데이트 완료")
+
+        except Exception as e:
+            logger.error(f"테이블 업데이트 중 오류: {e}")
 
     def load_csv(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "CSV 파일 선택", "", "CSV files (*.csv)")

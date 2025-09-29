@@ -81,7 +81,7 @@ class HeartbeatMonitor(QObject):
             is_changed = (self.prev_bit is None) or (bit_val != self.prev_bit)
             self.prev_bit = bit_val
 
-            logger.debug(f"Heartbeat 수신 - bit: {bit_val}, 변경 여부: {is_changed}")
+            # logger.debug(f"Heartbeat 수신 - bit: {bit_val}, 변경 여부: {is_changed}")
             self.failure_count = 0
             self.bit_changed.emit(bit_val, is_changed)
 

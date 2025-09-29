@@ -5,12 +5,12 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QGroupBox, QFrame, QLineEdit, QTableWidget, QTableWidgetItem, QComboBox
 )
+from PySide6.QtCore import Signal
 from services.fins_comm import FinsUDPClient
 from services.heartbeat_monitor import HeartbeatMonitor
 from services.log_analyzer import ensure_dataset_dir
 from services.trigger_monitor import TriggerMonitor
 from services.data_processor import DataProcessor
-from ui.dashboard_controller import DashboardController
 from utils.theta_analyzer import ThetaAnalyzer
 
 LAMP_COLOR = {
@@ -35,6 +35,8 @@ if not logger.hasHandlers():
 logger.debug("디버그 로그 출력 확인용")
 
 class DashboardPage(QWidget):
+    tuning_data_to_page = Signal(dict)
+
     def __init__(self):
         super().__init__()
         self.fins = None
@@ -45,6 +47,7 @@ class DashboardPage(QWidget):
         self.processor = DataProcessor(self.base_dir)
 
         self.selected_zone_number = 1
+        self.tuning_data = None
 
         self.controller = None
         self.theta_df = []
@@ -114,7 +117,7 @@ class DashboardPage(QWidget):
         return self.heartbeat_monitor.is_reconnecting
 
     def on_heartbeat_update(self, bit_value, is_changed):
-        logger.debug(f"Heartbeat update - bit: {bit_value}, changed: {is_changed}")
+        # logger.debug(f"Heartbeat update - bit: {bit_value}, changed: {is_changed}")
         self.heartbeat_lamp.setStyleSheet(
             LAMP_COLOR['active'] if bit_value else LAMP_COLOR['default']
         )
@@ -130,17 +133,35 @@ class DashboardPage(QWidget):
 
         logger.info("Trigger monitor started...")
 
+        # 모니터링할 비트 오프셋 리스트 설정
+        bit_offsets = [0, 1]  # 0: Regression data update trigger, 1: Heater tuning data trigger
+
         self.trigger_monitor = TriggerMonitor(
             fins_client=self.fins,
             is_reconnecting=is_reconnecting,
-            interval_ms=500
+            interval_ms=500,
+            bit_offsets=bit_offsets
         )
         self.trigger_monitor.data_received.connect(self.on_trigger_data_received)
         self.trigger_monitor.error_occurred.connect(self.on_trigger_error)
-        self.theta_df, tube_id = self.controller.run_all_zone_analysis(self.base_dir, self.selected_zone_number)
+        self.trigger_monitor.tuning_data_updated.connect(self.on_tuning_data_updated)  # 새로운 시그널 연결
+
         self.trigger_monitor.start()
 
-        self.processor.save_regression_data(tube_id, self.theta_df)
+        """
+        아래는 Regression 진행 시 활용
+        """
+        # self.theta_df, tube_id = self.controller.run_all_zone_analysis(self.base_dir, self.selected_zone_number)
+        # self.processor.save_regression_data(tube_id, self.theta_df)
+
+    def on_tuning_data_updated(self, tuning_data):
+        """튜닝 데이터 업데이트 시 호출되는 메서드"""
+        try:
+            self.tuning_data = tuning_data
+            logger.info(f"Dashboard tuning data updated: {self.tuning_data}")
+            # 필요한 경우 여기에서 UI 업데이트 로직 추가
+        except Exception as e:
+            logger.error(f"튜닝 데이터 업데이트 중 오류: {e}")
 
     def on_trigger_error(self, msg):
         logger.error(f"Trigger detect error: {msg}")
