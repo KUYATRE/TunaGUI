@@ -61,3 +61,59 @@ Tube1_tags:
     word_count: 4
     data_type: "INT"
     description: "Zone 8 tuning parameter NP1, NP2, HP1, HP2"
+
+  Tube1_para_send_Z1:
+    area: "E0"
+    word_addr: 840
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 1 tuning parameter NP1, NP2, HP1, HP2"
+
+  Tube1_para_send_Z2:
+    area: "E0"
+    word_addr: 845
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 2 tuning parameter NP1, NP2, HP1, HP2"
+
+  Tube1_para_send_Z3:
+    area: "E0"
+    word_addr: 850
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 3 tuning parameter NP1, NP2, HP1, HP2"
+
+  Tube1_para_send_Z4:
+    area: "E0"
+    word_addr: 855
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 4 tuning parameter NP1, NP2, HP1, HP2"
+
+  Tube1_para_send_Z5:
+    area: "E0"
+    word_addr: 860
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 5 tuning parameter NP1, NP2, HP1, HP2"
+
+  Tube1_para_send_Z6:
+    area: "E0"
+    word_addr: 865
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 6 tuning parameter NP1, NP2, HP1, HP2"
+
+  Tube1_para_send_Z7:
+    area: "E0"
+    word_addr: 870
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 7 tuning parameter NP1, NP2, HP1, HP2"
+
+  Tube1_para_send_Z8:
+    area: "E0"
+    word_addr: 875
+    word_count: 4
+    data_type: "INT"
+    description: "Zone 8 tuning parameter NP1, NP2, HP1, HP2"

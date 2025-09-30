@@ -102,6 +102,16 @@ class FinsUDPClient:
 
         return bit
 
+    def write_word(self, mem_area, word_addr, word_value):
+        cmd = self.build_write_command(mem_area, word_addr, 0, word_value)
+        response = self.send_command(cmd)
+        if response is None:
+            print("응답 없음 timeout")
+            return False
+
+        logger.debug(f"Word write success: {word_value}")
+        return True
+
     def write_word_bit(self, mem_area, word_addr, bit_offset, turn_on=True):
         current_value = self.read_word(word_addr, mem_area)
         if current_value is None:

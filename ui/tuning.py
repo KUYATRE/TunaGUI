@@ -12,13 +12,31 @@ import os
 from services.log_analyzer import (
     get_file,
     get_any_data_from_column,
-    save_tuning_parameter_rows
+    save_tuning_parameter_rows,
+    extract_t_data,
+    read_csv_by_classified_data
 )
 from utils.heater_analysis import consol_controller
 from utils.plot_utils import extract_all_zones_all_series_limited, detect_heater_zones
+from utils.fins_data_sender import data_send
 
+# Process log path : 실제 경로로 수정 필요
+PROCESS_LOG_PATH = r"C:\Users\202202773-NB\PycharmProjects\TunaGUI_QT\datasets"
+
+# 로거 설정
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+# 콘솔 핸들러 설정
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+
+# 로그 포맷 설정
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+
+# 핸들러 추가
+logger.addHandler(console_handler)
 
 
 class TuningPage(QWidget):
@@ -29,8 +47,13 @@ class TuningPage(QWidget):
         self.selected_temp_mode = "normal"
         self.selected_etype = "BCl3"
         self.tuning_data = None
+        self.classified_tuning_data = None
         self.dashboard = dashboard
         self.dashboard.tuning_data_to_page.connect(self.update_tuning_data)
+
+        # matplotlib 캔버스 초기화
+        self.figure = Figure()
+        self.canvas = FigureCanvas(self.figure)
 
         self.init_ui()
         self.selected_log_filename = ""
@@ -96,32 +119,72 @@ class TuningPage(QWidget):
         self.result_label = QLabel("")
         self.result_label.setStyleSheet("background-color: lightgray; color: green; font-style: italic; border: 2px solid #5e35b1; border-radius: 8px; padding: 4px;")
 
+        # 테이블과 Apply 버튼을 위한 수평 레이아웃
+        table_layout = QHBoxLayout()
+        
+        # 테이블 설정
         self.table = QTableWidget()
         self.table.setStyleSheet("font-family: 'Segoe UI'; font-size: 13px;")
         self.table.horizontalHeader().sectionClicked.connect(self.handle_header_click)
-
-        self.figure = Figure(facecolor="#2b2b2b")
-        self.canvas = FigureCanvas(self.figure)
-        self.canvas.setStyleSheet("background-color: #2b2b2b;")
-
+        table_layout.addWidget(self.table)
+        
+        # Apply 버튼 추가
+        apply_button = QPushButton("Apply")
+        apply_button.setStyleSheet("""
+            QPushButton {
+                background-color: #5e35b1;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 4px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #7c4dff;
+            }
+        """)
+        apply_button.clicked.connect(self.apply_tuning)
+        apply_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        table_layout.addWidget(apply_button, alignment=Qt.AlignmentFlag.AlignVCenter)
+        
+        # ... (기존 레이아웃에 table_layout 추가)
         layout.addLayout(file_layout)
         layout.addLayout(settings_layout)
         layout.addWidget(self.result_label)
-        layout.addWidget(self.table)
+        layout.addLayout(table_layout)
         layout.addWidget(self.canvas)
+
+    def apply_tuning(self):
+        zone_count = detect_heater_zones(self.data_rows[0])
+
+        for i in range(zone_count):
+            data_send(0xA0, 840 + (i * 5), self.new_np1[i])
+            data_send(0xA0, 841 + (i * 5), self.new_np2[i])
+            data_send(0xA0, 842 + (i * 5), self.new_hp1[i])
+            data_send(0xA0, 843 + (i * 5), self.new_hp2[i])
 
     def update_tuning_data(self, tuning_data):
         """대시보드로부터 튜닝 데이터 수신"""
         try:
             self.tuning_data = tuning_data
-            logger.info(f"튜닝 페이지 데이터 업데이트: {self.tuning_data}")
+            logger.debug(f"튜닝 페이지 데이터 업데이트: {self.tuning_data}")
 
             if self.tuning_data is not None:
-                # 테이블 데이터 업데이트
-                self.update_table_with_tuning_data()
+                classified_data = extract_t_data(self.tuning_data)
+                logger.debug(f"분류된 튜닝 데이터: {classified_data}")
+                logger.debug(f"Tuning data keys: {classified_data.keys()}")
+
+                self.classified_tuning_data = classified_data
+                
+                # CSV 파일 읽기
+                self.data_rows, self.selected_log_filename = read_csv_by_classified_data(PROCESS_LOG_PATH, classified_data)
+                if not self.data_rows:
+                    logger.warning("CSV 파일을 찾을 수 없거나 읽기 실패")
+                else:
+                    logger.debug(f"읽은 CSV 데이터: {self.data_rows[0]}")
+                    self.run_analysis()
 
         except Exception as e:
-            logger.error(f"튜닝 데이터 업데이트 중 오류: {e}")
+            logger.error(f"튜닝 데이터 업데이트 중 오류: {str(e)}", exc_info=True)
 
     def update_table_with_tuning_data(self):
         """튜닝 데이터로 테이블 업데이트"""
@@ -180,27 +243,109 @@ class TuningPage(QWidget):
 
         logger.info("튜닝 분석 시작")
         zone_count = detect_heater_zones(self.data_rows[0])
-        headers = ["구분"] + [f"Zone{i + 1}" for i in range(zone_count)] + ["비고"]
 
-        p1, initial_p2, p2, recipe_step = consol_controller(
-            self.selected_temp_mode, self.selected_etype, self.data_rows)
 
-        self.zone_data = extract_all_zones_all_series_limited(self.data_rows, recipe_step)
+        if self.classified_tuning_data is None:
+            headers = ["구분"] + [f"Zone{i + 1}" for i in range(zone_count)] + ["비고"]
+            p1, initial_p2, p2, recipe_step = consol_controller(
+                self.selected_temp_mode, self.selected_etype, self.data_rows)
+            self.zone_data = extract_all_zones_all_series_limited(self.data_rows, recipe_step)
+        else:
+            headers = (["구분"] + [f"Zone{i + 1}" for i in range(zone_count)] + ["비고"])
+            n_p1, n_initial_p2, n_p2, n_recipe_step = consol_controller(
+                'normal', self.selected_etype, self.data_rows)
+            self.zone_data = extract_all_zones_all_series_limited(self.data_rows, n_recipe_step)
+            h_p1, h_initial_p2, h_p2, h_recipe_step = consol_controller(
+                'high', self.selected_etype, self.data_rows)
+            self.zone_data = extract_all_zones_all_series_limited(self.data_rows, h_recipe_step)
+
         self.tube_id = get_any_data_from_column(self.data_rows, 'Tube ID')
         self.job_id = get_any_data_from_column(self.data_rows, 'JobNo')
 
         logger.debug(f"Tube ID: {self.tube_id}, Job No: {self.job_id}")
 
-        save_tuning_parameter_rows(self.selected_log_filename, self.tube_id, self.job_id, p1, initial_p2, p2)
-        logger.info("튜닝 결과 저장 완료")
-
         self.result_label.setText("분석 완료! (Zone 헤더 클릭으로 그래프 확인 가능)")
 
-        rows = [
-            ["초기 P2"] + initial_p2 + ["※ 첫 튜닝시에 적용"],
-            ["P1 조정"] + p1 + [""],
-            ["P2 조정"] + p2 + [""]
-        ]
+        self.current_np1 = [0] * zone_count
+        self.current_np2 = [0] * zone_count
+        self.new_np1 = [0] * zone_count
+        self.new_np2 = [0] * zone_count
+        self.current_hp1 = [0] * zone_count
+        self.current_hp2 = [0] * zone_count
+        self.new_hp1 = [0] * zone_count
+        self.new_hp2 = [0] * zone_count
+
+        for i in range(zone_count):
+            if self.classified_tuning_data is not None:
+                logger.debug(f"Tuning data exists")
+
+                tuning_data_key = list(self.classified_tuning_data.keys())
+
+                current_np1_zone = self.classified_tuning_data[tuning_data_key[0]][f'Z{i+1}']['NP1']
+                current_np2_zone = self.classified_tuning_data[tuning_data_key[0]][f'Z{i+1}']['NP2']
+                current_hp1_zone = self.classified_tuning_data[tuning_data_key[0]][f'Z{i+1}']['HP1']
+                current_hp2_zone = self.classified_tuning_data[tuning_data_key[0]][f'Z{i+1}']['HP2']
+
+                self.current_np1[i] = current_np1_zone
+                self.current_np2[i] = current_np2_zone
+                self.current_hp1[i] = current_hp1_zone
+                self.current_hp2[i] = current_hp2_zone
+
+            else:
+                break
+
+        for i in range(zone_count):
+            if self.classified_tuning_data is not None:
+                logger.debug(f"Tuning data exists")
+                if (self.current_np1 == 0) and (self.current_np2 == 0):
+                    logger.debug(f"First time for tuning: Current param(P1: {self.current_np1}, P2: {self.current_np2})")
+                    self.new_np1[i] = n_p1[i]
+                    self.new_np2[i] = n_initial_p2[i]
+                    logger.debug(f"First time for tuning: New param(P1: {self.new_np1}, P2: {self.new_np2})")
+
+                else:
+                    logger.debug(f"Not first time for tuning: Current param(P1: {self.current_np1}, P2: {self.current_np2})")
+                    self.new_np1[i] = self.current_np1[i] + n_p1[i]
+                    if n_p1[i] == 0:
+                        self.new_np2[i] = self.current_np2[i] + n_p2[i]
+                    else:
+                        self.new_np2[i] = self.current_np2[i]
+                    logger.debug(f"Not first time for tuning: New param(P1: {self.new_np1}, P2: {self.new_np2})")
+
+                if (self.current_hp1 == 0) and (self.current_hp2 == 0):
+                    logger.debug(f"First time for tuning: Current param(P1: {self.current_hp1}, P2: {self.current_hp2})")
+                    self.new_hp1[i] = h_p1[i]
+                    self.new_hp2[i] = h_initial_p2[i]
+                    logger.debug(f"First time for tuning: New param(P1: {self.new_hp1}, P2: {self.new_hp2})")
+
+                else:
+                    logger.debug(f"Not first time for tuning: Current param(P1: {self.current_hp1}, P2: {self.current_hp2})")
+                    self.new_hp1[i] = self.current_hp1[i] + h_p1[i]
+                    if h_p1[i] == 0:
+                        self.new_hp2[i] = self.current_hp2[i] + h_p2[i]
+                    else:
+                        self.new_hp2[i] = self.current_hp2[i]
+                    logger.debug(f"Not first time for tuning: New param(P1: {self.new_hp1}, P2: {self.new_hp2})")
+            else:
+                break
+
+        if self.classified_tuning_data is not None:
+            rows = [
+                ["NP1"] + self.new_np1 + [""],
+                ["NP2"] + self.new_np2 + [""],
+                ["HP1"] + self.new_hp1 + [""],
+                ["HP2"] + self.new_hp2 + [""]
+            ]
+
+        else:
+            rows = [
+                ["초기 P2"] + initial_p2 + ["※ 첫 튜닝시에 적용"],
+                ["P1 조정"] + p1 + [""],
+                ["P2 조정"] + p2 + [""]
+            ]
+            save_tuning_parameter_rows(self.selected_log_filename, self.tube_id, self.job_id, p1, initial_p2, p2)
+            logger.info("튜닝 결과 저장 완료")
+
 
         self.table.setRowCount(len(rows))
         self.table.setColumnCount(len(headers))
@@ -229,6 +374,8 @@ class TuningPage(QWidget):
 
         self.table.resizeColumnsToContents()
         logger.info("테이블 결과 렌더링 완료")
+        
+        self.classified_tuning_data = None
 
     def handle_header_click(self, index):
         zone_name = self.table.horizontalHeaderItem(index).text()

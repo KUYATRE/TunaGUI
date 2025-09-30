@@ -158,7 +158,8 @@ class DashboardPage(QWidget):
         """튜닝 데이터 업데이트 시 호출되는 메서드"""
         try:
             self.tuning_data = tuning_data
-            logger.info(f"Dashboard tuning data updated: {self.tuning_data}")
+            self.tuning_data_to_page.emit(tuning_data)
+            # logger.info(f"Dashboard tuning data updated: {self.tuning_data}")
             # 필요한 경우 여기에서 UI 업데이트 로직 추가
         except Exception as e:
             logger.error(f"튜닝 데이터 업데이트 중 오류: {e}")

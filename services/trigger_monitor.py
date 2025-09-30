@@ -55,7 +55,7 @@ class TriggerMonitor(QObject):
                     logger.info(f"Trigger detected at bit offset {bit_offset}")
                     self.handle_trigger_detection(bit_offset)
                     self.tuning_data = self.handle_tuning_data_trigger_detection(bit_offset)
-                    logger.info(f"Tuning data in trigger monitoring: {self.tuning_data}")
+                    # logger.info(f"Tuning data in trigger monitoring: {self.tuning_data}")
 
                 # 현재 상태 저장
                 self.previous_states[bit_offset] = current_state
@@ -123,13 +123,13 @@ class TriggerMonitor(QObject):
                         for i in range(len(param_names))
                     }
                     
-                    tuning_data[f'T{bit_offset}_Z{zone_num}'] = zone_data
+                    tuning_data[f'Tube{bit_offset}_Z{zone_num}'] = zone_data
                     
-                    logger.debug(f"T{bit_offset}_Zone {zone_num} 튜닝 파라미터 읽기 성공: {zone_data}")
+                    logger.debug(f"Tube{bit_offset}_Zone {zone_num} 튜닝 파라미터 읽기 성공: {zone_data}")
                     
                 except Exception as e:
-                    logger.error(f"T{bit_offset}_Zone {zone_num} 튜닝 파라미터 읽기 실패: {e}")
-                    tuning_data[f'T{bit_offset}_Z{zone_num}'] = None
+                    logger.error(f"Tube{bit_offset}_Zone {zone_num} 튜닝 파라미터 읽기 실패: {e}")
+                    tuning_data[f'Tube{bit_offset}_Z{zone_num}'] = None
             
             logger.info("전체 튜닝 파라미터 읽기 완료")
             return tuning_data
