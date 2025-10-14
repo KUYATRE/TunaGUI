@@ -12,13 +12,13 @@ if not logger.hasHandlers():
     logger.addHandler(handler)
 
 class FinsUDPClient:
-    def __init__(self, plc_ip, plc_port=9600, plc_node=1, pc_node=179):
+    def __init__(self, plc_ip, plc_port=9600, plc_node=1, pc_node=3):
         self.plc_ip = plc_ip
         self.plc_port = plc_port
         self.plc_node = plc_node
         self.pc_node = pc_node
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.settimeout(2)
+        self.sock.settimeout(5)
 
     def close(self):
         if self.sock:
@@ -69,7 +69,9 @@ class FinsUDPClient:
 
     def read_word(self, word_addr, mem_area, word_count=1):
         cmd = self.build_read_command(mem_area, word_addr, 0, word_count)
+        logger.info(f"command format merge completed: {cmd.hex()}")
         response = self.send_command(cmd)
+        logger.info(f"response: {response.hex()}")
 
         if response is None or response[12:14] != b'\x00\x00':
             return None
@@ -87,18 +89,22 @@ class FinsUDPClient:
 
     def read_word_bit(self, mem_area, word_addr, bit_offset):
         cmd = self.build_read_command(mem_area, word_addr, bit_offset)
+        logger.info(f"command format merge completed: {cmd.hex()}")
         response = self.send_command(cmd)
+        logger.info(f"response: {response.hex()}")
+
         if response is None:
             print("응답 없음 timeout")
             return None
         if response[12:14] != b'\x00\x00':
-            print("읽기 실패", response[12:14].hex())
-            return None
+            print("Response code exist", response[12:14].hex())
+            # return None
 
         value = int.from_bytes(response[-2:], byteorder='big')
         bit = (value >> bit_offset) & 1
 
         logger.info(f"Read {mem_area} {word_addr} {bit_offset} = {bit}")
+        logger.info(f"Response: ENDCODE {response[12:14].hex()}")
 
         return bit
 
@@ -164,9 +170,11 @@ class FinsUDPClient:
 # ===================TEST CODE===================
 if __name__ == "__main__":
     client = FinsUDPClient("172.22.80.1")
+    print(f"PLC IP: {client.plc_ip}, PLC NODE: {client.plc_node}, PC NODE: {client.pc_node}")
 
-    client.read_word_bit(mem_area=0xA0, word_addr=0, bit_offset=0)
-
-    client.write_word_bit(mem_area=161, word_addr=1, bit_offset=2, turn_on=True)
-
-    client.write_word_bit(mem_area=0xA0, word_addr=16800, bit_offset=1, turn_on=False)
+    # client.read_word(mem_area=0x82, word_addr=0)
+    client.read_word_bit(mem_area=0xAF, word_addr=0, bit_offset=0)
+    #
+    # client.write_word_bit(mem_area=161, word_addr=1, bit_offset=2, turn_on=True)
+    #
+    # client.write_word_bit(mem_area=0xA0, word_addr=16800, bit_offset=1, turn_on=False)

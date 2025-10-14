@@ -362,7 +362,6 @@ missing module named 'numpy_distutils.command' - imported by numpy.f2py.diagnose
 missing module named numpy_distutils - imported by numpy.f2py.diagnose (delayed, optional)
 missing module named charset_normalizer - imported by numpy.f2py.crackfortran (optional)
 missing module named scipy._distributor_init_local - imported by scipy (optional), scipy._distributor_init (optional)
-missing module named yaml - imported by numpy.__config__ (delayed), scipy.__config__ (delayed)
 missing module named 'pyarrow.compute' - imported by pandas.core.arrays._arrow_string_mixins (conditional), pandas.core.arrays.string_arrow (conditional), pandas.core.reshape.merge (delayed, conditional), pandas.core.arrays.arrow.array (conditional), pandas.core.arrays.arrow.accessors (conditional)
 missing module named sets - imported by pytz.tzinfo (optional)
 missing module named collections.Mapping - imported by collections (optional), pytz.lazy (optional)

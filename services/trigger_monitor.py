@@ -47,7 +47,7 @@ class TriggerMonitor(QObject):
         try:
             for bit_offset in self.bit_offsets:
                 # FINS 통신으로 PLC의 해당 비트 읽기
-                current_state = self.fins_client.read_word_bit(mem_area=0xAF, word_addr=0, bit_offset=bit_offset)
+                current_state = self.fins_client.read_word_bit(mem_area=0xAF, word_addr=1, bit_offset=bit_offset)
                 previous_state = self.previous_states[bit_offset]
 
                 # Rising edge 감지 (False → True)

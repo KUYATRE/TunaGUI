@@ -103,7 +103,7 @@ class DashboardPage(QWidget):
 
         self.heartbeat_monitor = HeartbeatMonitor(
             fins_client=self.fins,
-            mem_area=0xA0,
+            mem_area=0xAF,
             word_addr=0,
             bit_offset=0,
             interval_ms=500

@@ -84,7 +84,7 @@ class DummyDataGenerator:
 
 
 if __name__ == "__main__":
-    receiver = FinsDataReceiver(ip="172.22.80.1", plc_port=9600, plc_node=1, pc_node=179)
+    receiver = FinsDataReceiver(ip="172.22.80.1", plc_port=9600, plc_node=1, pc_node=3)
     result = receiver.receive_all()
     if result:
         tube_id, job_id, data = result

@@ -157,10 +157,10 @@ class TuningPage(QWidget):
         zone_count = detect_heater_zones(self.data_rows[0])
 
         for i in range(zone_count):
-            data_send(0xA0, 840 + (i * 5), self.new_np1[i])
-            data_send(0xA0, 841 + (i * 5), self.new_np2[i])
-            data_send(0xA0, 842 + (i * 5), self.new_hp1[i])
-            data_send(0xA0, 843 + (i * 5), self.new_hp2[i])
+            data_send(0xAE, 0 + (i * 5), self.new_np1[i])
+            data_send(0xAE, 1 + (i * 5), self.new_np2[i])
+            data_send(0xAE, 2 + (i * 5), self.new_hp1[i])
+            data_send(0xAE, 3 + (i * 5), self.new_hp2[i])
 
     def update_tuning_data(self, tuning_data):
         """대시보드로부터 튜닝 데이터 수신"""
